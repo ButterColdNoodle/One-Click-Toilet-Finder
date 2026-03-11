@@ -9,7 +9,7 @@ self.addEventListener("install", e=>{
         caches.open(cache_version).then(cache=>{
             /*将以下资源全部加入缓存*/
             /*结合以上-> 任何一个资源下载失败，整个addAll的Promise[未来才会完成的任务]被拒绝*/
-            return cache.addAll(["/", "./OCTF_css/OCTF_main.css", "./OCTF_images/Icon_192.png", "./OCTF_images/Icon_512.png"]);
+            return cache.addAll(["/One-Click-Toilet-Finder/", "/One-Click-Toilet-Finder/OCTF_css/OCTF_main.css", "/One-Click-Toilet-Finder/OCTF_images/Icon_192.png", "/One-Click-Toilet-Finder/OCTF_images/Icon_512.png"]);
         })
     );
 });
