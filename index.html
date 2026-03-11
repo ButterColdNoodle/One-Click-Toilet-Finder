@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <!--显示文本的字符编码（防止非英文字符乱码）-->
+        <meta charset="utf-8" />
+        <!--移动端适配（网页宽度等于屏幕宽度）-->
+        <meta name="viewport" contant="width=device-width"/>
+        <meta name="theme-color" content="##0a6aaa75"/>
+        <title>One-Click Toilet Finder</title>
+        <link rel="stylesheet" href="OCTF_css/OCTF_main.css"/>
+        <link rel="manifest" href="manifest.json"/>
+        <img src="OCTF_images/Icon_192.png"/>
+    </head>
+
+    <body>
+        <h1>Map</h1>
+        
+        <!--地图-->
+        <div id="map">
+
+        </div>
+        
+        <!--放在body最底部-->
+        <!--若浏览器支持serviceworker则加载并安装serviceworker脚本-->
+        <script>
+            if('serviceWorker' in navigator){
+                navigator.serviceWorker.register('../OCTF_js/sw.js')
+            }
+            
+        </script>
+    </body>
+
+
+
+</html>

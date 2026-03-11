@@ -1,0 +1,24 @@
+{
+    "name": "One-Click Toilet Finder",
+    "short_name": "OCTF",
+    "start_url": ".",
+    "theme_color": "#0a6aaa75",
+    "background_color": "#b1dae0",
+    "display": "standalone",
+    "icons": [
+        {
+            "src": "OCTF_images/Icon_512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "Icon_192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}
+
+
