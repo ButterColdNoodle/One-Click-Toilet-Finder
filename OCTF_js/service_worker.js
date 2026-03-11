@@ -1,5 +1,5 @@
 if("serviceWorker" in navigator){
-    navigator.serviceWorker.register('../sw.js').then(register =>{
+    navigator.serviceWorker.register('../One-Click-Toilet-Finder/sw.js').then(register =>{
         console.log("SW Registered!");
         console.log(registration);
     }).catch(error =>{
