@@ -9,7 +9,7 @@
         <title>One-Click Toilet Finder</title>
         <link rel="stylesheet" href="OCTF_css/OCTF_main.css"/>
         <link rel="manifest" href="manifest.json"/>
-        <img src="OCTF_images/Icon_192.png"/>
+        <link rel="apple-touch-icon" href="OCTF_images/Icon_192.png"/>
     </head>
 
     <body>
@@ -22,9 +22,10 @@
         
         <!--放在body最底部-->
         <!--若浏览器支持serviceworker则加载并安装serviceworker脚本-->
-        <script>
+        <script src="OCTF_js/service_worker.js">
+            
             if('serviceWorker' in navigator){
-                navigator.serviceWorker.register('../OCTF_js/sw.js')
+                navigator.serviceWorker.register('/OCTF_js/service-worker.js')
             }
             
         </script>
