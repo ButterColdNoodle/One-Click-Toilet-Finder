@@ -30,12 +30,12 @@
             window.addEventListener('beforeinstallprompt', (e)=>{
                 e.preventDefault();
                 deferredPrompt = e;
-                installBtn.style.display = 'block';
+                install_Btn.style.display = 'block';
                 console.log('beforeinstallprompt tirggerd');
             });    
 
              // 点击安装按钮时触发安装弹窗
-            installBtn.addEventListener('click', async () => {
+            install_Btn.addEventListener('click', async () => {
                 if (!deferredPrompt) return;
                 // 显示安装弹窗
                 deferredPrompt.prompt();
@@ -44,14 +44,14 @@
                 console.log('用户安装选择:', outcome);
                 // 无论用户选了什么，本次安装流程结束，清理
                 deferredPrompt = null;
-                installBtn.style.display = 'none';
+                install_Btn.style.display = 'none';
             });
 
             // 监听应用安装成功事件
             window.addEventListener('appinstalled', () => {
                 console.log('PWA 安装成功！');
                 deferredPrompt = null;
-                installBtn.style.display = 'none';
+                install_Btn.style.display = 'none';
             });
         </script>
     </body>
