@@ -13,8 +13,9 @@
     </head>
 
     <body>
+
         <h1>Map</h1>
-        
+        <button id="install_Btn" style="display: none;">📱 Install</button>
         <!--地图-->
         <div id="map">
 
@@ -22,12 +23,36 @@
         
         <!--放在body最底部-->
         <!--若浏览器支持serviceworker则加载并安装serviceworker脚本-->
-        <script src="OCTF_js/service_worker.js">
-            
-            if('serviceWorker' in navigator){
-                navigator.serviceWorker.register('/OCTF_js/service-worker.js')
-            }
-            
+        <script>
+            let deferredPrompt;
+            const install_Btn = document.getElementById('install_Btn');
+
+            window.addEventListener('beforeinstallprompt', (e)=>{
+                e.preventDefault();
+                deferredPrompt = e;
+                installBtn.style.display = 'block';
+                console.log('beforeinstallprompt tirggerd');
+            });    
+
+             // 点击安装按钮时触发安装弹窗
+            installBtn.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                // 显示安装弹窗
+                deferredPrompt.prompt();
+                // 等待用户响应
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log('用户安装选择:', outcome);
+                // 无论用户选了什么，本次安装流程结束，清理
+                deferredPrompt = null;
+                installBtn.style.display = 'none';
+            });
+
+            // 监听应用安装成功事件
+            window.addEventListener('appinstalled', () => {
+                console.log('PWA 安装成功！');
+                deferredPrompt = null;
+                installBtn.style.display = 'none';
+            });
         </script>
     </body>
 
