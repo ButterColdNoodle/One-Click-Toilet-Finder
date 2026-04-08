@@ -1,6 +1,6 @@
 /*定义当前缓存名为‘版本号’->解决缓存污染问题*/
 /*记得每次更新版本号*/
-const cache_version = 'cache_0.0.27';
+const cache_version = 'cache_0.0.28';
 
 /*self -> ServiceWorker自身检测到安装时 （ServiceWorker首次安装或更新时触发事件）*/
 self.addEventListener("install", e=>{
@@ -40,12 +40,19 @@ self.addEventListener("activate", e=>{
 
 /*当监听到ServiceWorker的fetch事件[发起网络请求]*/
 self.addEventListener("fetch", e=>{
-    /*用后面代码替换默认网络请求*/
+    /*BUG 1 Fix*/
     e.respondWith(
-        /*在ServiceWorker的fetch所有缓存中查找是否有与请求对应的响应*/
-        caches.match(e.request).then(response=>{
-            /*response为真[找到了响应]->直接返回  否则，发起真是网络请求并返回结果*/
-            return response || fetch(e.request);
+        // 1. 永远先尝试去网络上获取最新的文件
+        fetch(e.request).then(response => {
+            // 如果获取成功，顺手把最新得到的文件塞进缓存里，更新本地库
+            let responseClone = response.clone();
+            caches.open(cache_version).then(cache => {
+                cache.put(e.request, responseClone);
+            });
+            return response;
+        }).catch(() => {
+            // 2. 只有当 fetch 报错（比如用户没网了，或者进了信号差的厕所），才从缓存里拿旧的凑合用
+            return caches.match(e.request);
         })
     );
 });
