@@ -13,9 +13,20 @@
     </head>
 
     <body>
+        
 
+        
         <h1>Map_Placeholder</h1>
         <button id="install_Btn" style="display: none;">📱 Install</button>
+        <div id="ios_prompt" style="display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; z-index: 9999; width: 80%; border: 1px solid #eee;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; font-size: 16px;">想要安装此应用？</p>
+            <p style="margin: 0; font-size: 14px; color: #666; line-height: 1.5;">
+                请点击底部正中间的 <b>[分享图标]</b> <br>
+                然后向下滚动并选择 <b>[添加到主屏幕]</b>
+            </p>
+            <button id="close_ios_prompt" style="margin-top: 15px; padding: 8px 20px; border: none; background: #007bff; color: white; border-radius: 5px; font-size: 14px;">我知道了</button>
+        </div>
+
         <!--地图-->
         <div id="map">
 
@@ -25,34 +36,111 @@
         <!--若浏览器支持serviceworker则加载并安装serviceworker脚本-->
         <script src="OCTF_js/service_worker.js"></script>
         <script>
-            let deferredPrompt;
-            const install_Btn = document.getElementById('install_Btn');
+// 获取我们在上面定义的 HTML 元素
+            const installBtn = document.getElementById('install_Btn'); // 获取安装按钮
+            const iosPrompt = document.getElementById('ios_prompt');   // 获取苹果专属提示框
+            const closeIosBtn = document.getElementById('close_ios_prompt'); // 获取关闭苹果提示的按钮
 
-            window.addEventListener('beforeinstallprompt', (e)=>{
+            // 定义一个全局变量，用来保存浏览器官方的“触发安装事件”
+            let deferredPrompt; 
+
+            // 1. 定义一个函数，用来精准判断用户当前使用的是什么设备
+            const detectDevice = () => {
+                // 获取浏览器自带的 User-Agent 字符串，并全部转为小写字母，方便匹配
+                const ua = window.navigator.userAgent.toLowerCase();
+                
+                // 判断是否为苹果移动设备：包含 iphone、ipad、ipod，或者是伪装成 Mac 的新版 iPad（支持触屏）
+                const isIos = /iphone|ipad|ipod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                // 判断是否为安卓设备
+                const isAndroid = /android/.test(ua);
+                // 判断是否为桌面电脑设备（包含 windows 和 mac，且要排除刚刚识别出的苹果移动设备）
+                const isDesktop = /windows|macintosh/.test(ua) && !isIos; 
+
+                // 根据判断结果返回对应的字符串标识
+                if (isIos) return 'ios';
+                if (isAndroid) return 'android';
+                if (isDesktop) return 'desktop';
+                return 'other'; // 其他未知设备
+            };
+
+            // 2. 定义一个函数，检测应用是否已经安装在了桌面上（独立运行模式）
+            const isStandalone = () => {
+                // 前者是苹果专属的判断属性，后者是 W3C 标准的判断媒体查询，只要有一个满足说明已安装
+                return ('standalone' in window.navigator && window.navigator.standalone) || window.matchMedia('(display-mode: standalone)').matches;
+            };
+
+            // 3. 监听浏览器原生的 beforeinstallprompt 事件（注意：苹果 iOS 永远不会触发此事件）
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // 阻止浏览器自己偷偷摸摸弹出默认的安装条
                 e.preventDefault();
+                // 将这个原生事件保存到我们之前定义的变量中，留着按钮点击时再用
                 deferredPrompt = e;
-                install_Btn.style.display = 'block';
-                console.log('beforeinstallprompt tirggerd');
-            });    
 
-             // 点击安装按钮时触发安装弹窗
-            install_Btn.addEventListener('click', async () => {
-                if (!deferredPrompt) return;
-                // 显示安装弹窗
-                deferredPrompt.prompt();
-                // 等待用户响应
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log('用户安装选择:', outcome);
-                // 无论用户选了什么，本次安装流程结束，清理
-                deferredPrompt = null;
-                install_Btn.style.display = 'none';
+                // 判断设备类型
+                const deviceType = detectDevice();
+
+                // 如果当前没有安装，而且不是苹果设备（安卓或电脑）
+                if (!isStandalone() && deviceType !== 'ios') {
+                    // 把我们自己写的“安装应用”按钮显示出来
+                    installBtn.style.display = 'block'; 
+                }
             });
 
-            // 监听应用安装成功事件
-            window.addEventListener('appinstalled', () => {
-                console.log('PWA Install Suecces！');
+            // 4. 为我们的“安装应用”按钮绑定点击事件（针对安卓和电脑）
+            installBtn.addEventListener('click', async () => {
+                // 如果找不到刚才保存的事件（比如代码出错了或者设备不支持），直接退出不往下执行
+                if (!deferredPrompt) return; 
+
+                // 获取当前设备类型
+                const deviceType = detectDevice(); 
+
+                // 【核心逻辑】：如果是 Windows 或 Mac 电脑端
+                if (deviceType === 'desktop') {
+                    // 弹出一个系统级别的提示框，告诉用户手机端更好
+                    alert('温馨提示：此为找厕所工具，使用移动端（手机）体验更佳哦！点击确认后继续安装。');
+                }
+
+                // 无论是安卓还是刚才提示完的电脑端，统一唤起原生的官方安装确认弹窗
+                deferredPrompt.prompt();
+
+                // 暂停代码执行，等待用户在原生弹窗里点击了“安装”还是“取消”
+                const { outcome } = await deferredPrompt.userChoice;
+                // 在控制台打印用户的选择结果（accepted为安装，dismissed为取消）
+                console.log(`用户安装选择: ${outcome}`);
+
+                // 流程结束，清空保存的事件
                 deferredPrompt = null;
-                install_Btn.style.display = 'none';
+                // 将我们自己的安装按钮重新隐藏起来
+                installBtn.style.display = 'none';
+            });
+
+            // 5. 处理苹果 iOS 的专属引导逻辑（由于iOS不触发上面的事件，我们要在页面加载完成时主动检查）
+            window.addEventListener('DOMContentLoaded', () => {
+                // 获取当前设备类型
+                const deviceType = detectDevice(); 
+
+                // 如果检测到是苹果 iOS 移动设备，并且当前是在浏览器里（还没有安装到桌面）
+                if (deviceType === 'ios' && !isStandalone()) {
+                    // 把那个专为苹果写的图文气泡显示出来
+                    iosPrompt.style.display = 'block';
+                }
+            });
+
+            // 6. 给苹果引导气泡的“我知道了”按钮绑定点击事件
+            if(closeIosBtn) {
+                closeIosBtn.addEventListener('click', () => {
+                    // 用户点击后，把引导气泡隐藏掉，不再打扰用户
+                    iosPrompt.style.display = 'none';
+                });
+            }
+
+            // 7. 监听应用安装成功的终极事件（任何设备安装成功都会触发）
+            window.addEventListener('appinstalled', () => {
+                // 在控制台记录一下
+                console.log('恭喜！PWA应用已成功安装！');
+                // 确保安装成功后，任何安装按钮和提示框都不会再出现
+                installBtn.style.display = 'none';
+                iosPrompt.style.display = 'none';
             });
         </script>
     </body>
