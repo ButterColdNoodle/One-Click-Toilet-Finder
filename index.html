@@ -26,6 +26,7 @@
             </p>
             <button id="close_ios_prompt" style="margin-top: 15px; padding: 8px 20px; border: none; background: #007bff; color: white; border-radius: 5px; font-size: 14px;">我知道了</button>
         </div>
+        <button id="locate_Btn" style="padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 5px; margin-top: 20px;">Meine Coordinaten(Local)</button>
 
         <!--地图-->
         <div id="map">
@@ -35,6 +36,7 @@
         <!--放在body最底部-->
         <!--若浏览器支持serviceworker则加载并安装serviceworker脚本-->
         <script src="OCTF_js/service_worker.js"></script>
+        <script src="OCTF_js/Location.js"></script>
         <script>
 // 获取我们在上面定义的 HTML 元素
             const installBtn = document.getElementById('install_Btn'); // 获取安装按钮
