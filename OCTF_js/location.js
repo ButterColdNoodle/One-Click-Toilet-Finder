@@ -1,56 +1,129 @@
-// 1. 在最外层（全局）定义一个“空盒子”来装坐标
-// 1. 在最外层定义“空盒子”来装坐标
 let myLocation = {
-    latitude: null,
-    longitude: null,
-    isReady: false  
+  latitude: null,
+  longitude: null,
+  accuracy: null,
+  isReady: false
 };
 
-// 2. 呼叫雷达的主函数
-function locateUser() {
-    if ('geolocation' in navigator) {
-        // 向浏览器请求位置，并指派成功和失败的处理人
-        navigator.geolocation.getCurrentPosition(onSuccess, onError);
+let map = null;
+let userMarker = null;
+let accuracyCircle = null;
+
+function updateStatus(message) {
+  const statusText = document.getElementById("status_Text");
+
+  if (statusText) {
+    statusText.textContent = message;
+  }
+}
+
+function initMap() {
+  if (map) {
+    return map;
+  }
+
+  map = L.map("map");
+
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  return map;
+}
+
+function showUserOnMap(latitude, longitude, accuracy) {
+  const userPosition = [latitude, longitude];
+
+  initMap();
+
+  map.setView(userPosition, 16);
+
+  if (userMarker) {
+    userMarker.setLatLng(userPosition);
+  } else {
+    userMarker = L.marker(userPosition)
+      .addTo(map)
+      .bindPopup("Your current location");
+  }
+
+  userMarker.openPopup();
+
+  if (Number.isFinite(accuracy)) {
+    if (accuracyCircle) {
+      accuracyCircle.setLatLng(userPosition);
+      accuracyCircle.setRadius(accuracy);
     } else {
-        alert("Please switch Browser");
+      accuracyCircle = L.circle(userPosition, {
+        radius: accuracy
+      }).addTo(map);
     }
+  }
+
+  setTimeout(() => {
+    map.invalidateSize();
+  }, 100);
 }
 
-// 3. 定位成功时的处理人 (成功获取经纬度)
-function onSuccess(position) {
-    myLocation.latitude = position.coords.latitude;
-    myLocation.longitude = position.coords.longitude;
-    myLocation.isReady = true; 
+function locateUser() {
+  updateStatus("Requesting location permission...");
 
-    console.log("Location get!", myLocation);
-    // 为了让你直观看到结果，暂时加个弹窗，以后画地图时可以删掉
-    alert(`Success! latitude: ${myLocation.latitude}, longitude: ${myLocation.longitude}`);
-}
-
-// 4. 【之前漏掉的就是这里！】定位失败时的处理人
-function onError(error) {
-    switch(error.code) {
-        case error.PERMISSION_DENIED:
-            alert("You declined location permissions, so we can't help you find nearby restrooms.");
-            break;
-        case error.POSITION_UNAVAILABLE:
-            alert("Location information unavailable");
-            break;
-        case error.TIMEOUT:
-            alert("Location request timed out. Please check your network or try again later.");
-            break;
-        default:
-            alert("Unknown location error");
-            break;
-    }
-}
-
-// ================= 绑定事件部分 =================
-const locateBtn = document.getElementById('locate_Btn');
-
-if (locateBtn) {
-    locateBtn.addEventListener('click', () => {
-        console.log("location scan start"); 
-        locateUser(); 
+  if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 30000
     });
+  } else {
+    updateStatus("This browser does not support location services.");
+  }
 }
+
+function onSuccess(position) {
+  myLocation.latitude = position.coords.latitude;
+  myLocation.longitude = position.coords.longitude;
+  myLocation.accuracy = position.coords.accuracy;
+  myLocation.isReady = true;
+
+  console.log("Location get!", myLocation);
+
+  updateStatus("Location found. Showing nearby map...");
+
+  showUserOnMap(
+    myLocation.latitude,
+    myLocation.longitude,
+    myLocation.accuracy
+  );
+}
+
+function onError(error) {
+  let message = "";
+
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      message =
+        "Location permission was denied. Please allow location access in your browser settings and reload the app.";
+      break;
+
+    case error.POSITION_UNAVAILABLE:
+      message = "Location information is unavailable. Please reload the app later.";
+      break;
+
+    case error.TIMEOUT:
+      message = "Location request timed out. Please reload the app and try again.";
+      break;
+
+    default:
+      message = "Unknown location error. Please reload the app.";
+      break;
+  }
+
+  updateStatus(message);
+  alert(message);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("App started. Requesting location automatically.");
+  locateUser();
+});

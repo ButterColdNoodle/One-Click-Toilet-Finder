@@ -1,6 +1,6 @@
 /*定义当前缓存名为‘版本号’->解决缓存污染问题*/
 /*记得每次更新版本号*/
-const cache_version = 'cache_0.0.30';
+const cache_version = 'cache_0.1.3';
 
 /*self -> ServiceWorker自身检测到安装时 （ServiceWorker首次安装或更新时触发事件）*/
 self.addEventListener("install", e=>{
@@ -38,25 +38,29 @@ self.addEventListener("activate", e=>{
     )
 })
 
-/*当监听到ServiceWorker的fetch事件[发起网络请求]*/
-self.addEventListener("fetch", e=>{
-    /*BUG 1 Fix*/
-    e.respondWith(
-        // 1. 永远先尝试去网络上获取最新的文件
-        fetch(e.request).then(response => {
-            // 如果获取成功，顺手把最新得到的文件塞进缓存里，更新本地库
-            let responseClone = response.clone();
-            caches.open(cache_version).then(cache => {
-                cache.put(e.request, responseClone);
-            });
-            return response;
-        }).catch(() => {
-            // 2. 只有当 fetch 报错（比如用户没网了，或者进了信号差的厕所），才从缓存里拿旧的凑合用
-            return caches.match(e.request);
-        })
-    );
-});
+self.addEventListener("fetch", e => {
+  const requestUrl = new URL(e.request.url);
 
+  if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
+
+  e.respondWith(
+    fetch(e.request)
+      .then(response => {
+        let responseClone = response.clone();
+
+        caches.open(cache_version).then(cache => {
+          cache.put(e.request, responseClone);
+        });
+
+        return response;
+      })
+      .catch(() => {
+        return caches.match(e.request);
+      })
+  );
+});
 
 
 /*核心目的->PWA能够离线工作，提升加载速度*/
