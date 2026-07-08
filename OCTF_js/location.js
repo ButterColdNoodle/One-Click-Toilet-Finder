@@ -27,11 +27,10 @@ function initMap() {
     return map;
   }
 
-  // 创建 Leaflet 地图
+  // 创建 Leaflet 地图,但去掉自带的那个缩放用+-按钮(也就是Zoomcontrol)
   // "map" 对应 index.html 里的 <div id="map"></div>
   // L为Leaflet
-  map = L.map("map");
-
+  map = L.map("map", {zoomControl: false});
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution:

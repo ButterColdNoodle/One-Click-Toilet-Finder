@@ -109,8 +109,6 @@
 
                 // 暂停代码执行，等待用户在原生弹窗里点击了“安装”还是“取消”
                 const { outcome } = await deferredPrompt.userChoice;
-                // 在控制台打印用户的选择结果（accepted为安装，dismissed为取消）
-                console.log(`用户安装选择: ${outcome}`);
 
                 // 流程结束，清空保存的事件
                 deferredPrompt = null;
@@ -141,7 +139,6 @@
             // 7. 监听应用安装成功的终极事件（任何设备安装成功都会触发）
             window.addEventListener('appinstalled', () => {
                 // 在控制台记录一下
-                console.log('恭喜！PWA应用已成功安装！');
                 // 确保安装成功后，任何安装按钮和提示框都不会再出现
                 installBtn.style.display = 'none';
                 iosPrompt.style.display = 'none';
