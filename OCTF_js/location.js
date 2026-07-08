@@ -9,14 +9,6 @@ let map = null;
 let userMarker = null;
 let accuracyCircle = null;
 
-function updateStatus(message) {
-  const statusText = document.getElementById("status_Text");
-
-  if (statusText) {
-    statusText.textContent = message;
-  }
-}
-
 function initMap() {
   if (map) {
     return map;
@@ -43,12 +35,9 @@ function showUserOnMap(latitude, longitude, accuracy) {
   if (userMarker) {
     userMarker.setLatLng(userPosition);
   } else {
-    userMarker = L.marker(userPosition)
-      .addTo(map)
-      .bindPopup("Your current location");
+    userMarker = L.marker(userPosition).addTo(map);
   }
 
-  userMarker.openPopup();
 
   if (Number.isFinite(accuracy)) {
     if (accuracyCircle) {
@@ -67,8 +56,6 @@ function showUserOnMap(latitude, longitude, accuracy) {
 }
 
 function locateUser() {
-  updateStatus("Requesting location permission...");
-
   if ("geolocation" in navigator) {
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
       enableHighAccuracy: true,
@@ -76,7 +63,7 @@ function locateUser() {
       maximumAge: 30000
     });
   } else {
-    updateStatus("This browser does not support location services.");
+    console.warn("This browser does not support location services.");
   }
 }
 
@@ -88,7 +75,6 @@ function onSuccess(position) {
 
   console.log("Location get!", myLocation);
 
-  updateStatus("Location found. Showing nearby map...");
 
   showUserOnMap(
     myLocation.latitude,

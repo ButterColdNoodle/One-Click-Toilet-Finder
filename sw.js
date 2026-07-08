@@ -1,6 +1,6 @@
 /*定义当前缓存名为‘版本号’->解决缓存污染问题*/
 /*记得每次更新版本号*/
-const cache_version = 'cache_0.1.3';
+const cache_version = 'cache_0.1.31';
 
 /*self -> ServiceWorker自身检测到安装时 （ServiceWorker首次安装或更新时触发事件）*/
 self.addEventListener("install", e=>{
