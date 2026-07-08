@@ -1,3 +1,12 @@
+// 1. 向浏览器请求用户当前位置；
+// 2. 把经纬度保存到 myLocation；
+// 3. 根据定位成功 / 失败给用户反馈；
+// 4. 把定位按钮和 locateUser() 函数连接起来。
+
+// 在全局定义一个对象，用来保存用户当前位置。
+// latitude：纬度
+// longitude：经度
+// isReady：是否已经成功获取位置
 let myLocation = {
   latitude: null,
   longitude: null,
@@ -63,7 +72,7 @@ function locateUser() {
       maximumAge: 30000
     });
   } else {
-    console.warn("This browser does not support location services.");
+    alert("This browser does not support location services.");
   }
 }
 
@@ -84,29 +93,8 @@ function onSuccess(position) {
 }
 
 function onError(error) {
-  let message = "";
+   console.warn("Location error:", error);
 
-  switch (error.code) {
-    case error.PERMISSION_DENIED:
-      message =
-        "Location permission was denied. Please allow location access in your browser settings and reload the app.";
-      break;
-
-    case error.POSITION_UNAVAILABLE:
-      message = "Location information is unavailable. Please reload the app later.";
-      break;
-
-    case error.TIMEOUT:
-      message = "Location request timed out. Please reload the app and try again.";
-      break;
-
-    default:
-      message = "Unknown location error. Please reload the app.";
-      break;
-  }
-
-  updateStatus(message);
-  alert(message);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
