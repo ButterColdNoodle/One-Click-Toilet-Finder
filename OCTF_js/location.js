@@ -1,53 +1,59 @@
 // 1. 向浏览器请求用户当前位置；
 // 2. 把经纬度保存到 myLocation；
-// 3. 根据定位成功 / 失败给用户反馈；
-// 4. 定位成功后初始化地图，并搜索附近厕所。
+// 3. 根据定位成功或失败给用户反馈；
+// 4. 定位成功后初始化地图，并定时搜索附近厕所。
 
-// 在全局定义一个对象，用来保存用户当前位置。
+// 保存用户当前位置
 // latitude：纬度
 // longitude：经度
-// isReady：是否已经成功获取位置
 let myLocation = {
   latitude: null,
-  longitude: null,
-  isReady: false
+  longitude: null
 };
 
 // 保存 Leaflet 地图对象
-// 第一次创建地图后会存到这里，之后不重复创建
+// 地图第一次创建后会存到这里，避免重复创建
 let map = null;
 
 // 保存用户当前位置的 marker
-// 如果之后重新定位，只移动这个 marker，不重复创建新的 marker
+// 如果以后再次定位，可以移动原来的 marker，而不是重复创建
 let userMarker = null;
+
+// 保存当前页面运行期间已经显示过的厕所
+// new Set()是用来保存不重复的数据集合
+let knownToilets = new Set();
 
 
 // 初始化地图
-// 这个函数只负责创建地图和加载 CARTO 无标签底图
+// 负责创建 Leaflet 地图并加载 CARTO 无标签底图
 function initMap() {
-  // 如果地图已经创建过，直接返回已有地图
-  // 这样可以避免重复初始化地图导致报错
+  // 如果地图已经创建过，就直接返回已有地图
+  // 避免重复初始化地图导致报错
   if (map) {
     return map;
   }
 
-  // 创建 Leaflet 地图，但去掉自带的那个缩放用 + / - 按钮，也就是 zoomControl
+  // 创建 Leaflet 地图
   // "map" 对应 index.html 里的 <div id="map"></div>
-  // L 为 Leaflet
+  // zoomControl: false 用于隐藏默认的 + / - 缩放按钮
   map = L.map("map", {
     zoomControl: false
   });
 
   // 加载 CARTO 的无标签底图
-  // 这样地图上不会显示太多餐厅、商店、博物馆等无关信息
-  L.tileLayer("https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19,
+  // 底图主要显示道路和基础地理信息，
+  // 不显示大量餐厅、商店和博物馆等标签
+  L.tileLayer(
+    "https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    {
+      maxZoom: 19,
 
-    // 地图来源：OpenStreetMap 和 CARTO
-    // attribution 不能删除，因为这是地图服务要求显示的署名信息
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'
-  }).addTo(map);
+      // 地图来源署名
+      // 因为底图使用了 OpenStreetMap 数据和 CARTO 服务，所以两者都要保留
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    }
+  ).addTo(map);
 
   return map;
 }
@@ -57,49 +63,53 @@ function initMap() {
 // latitude：用户纬度
 // longitude：用户经度
 function showUserOnMap(latitude, longitude) {
+  // Leaflet 使用 [纬度, 经度] 表示一个位置
   const userPosition = [latitude, longitude];
 
   // 确保地图已经初始化
   initMap();
 
   // 把地图中心移动到用户当前位置
-  // 16 是缩放级别，数字越大地图越近
+  // 16 是缩放级别，数字越大，地图显示得越近
   map.setView(userPosition, 16);
 
-  // 如果用户 marker 已经存在，就移动 marker
+  // 如果用户 marker 已经存在，就移动原来的 marker
   if (userMarker) {
-    // setLatLng：设置 marker 的纬度和经度
     userMarker.setLatLng(userPosition);
   } else {
-    // 如果 marker 不存在，就创建一个新的 marker
+    // 如果用户 marker 还不存在，就创建一个
     userMarker = L.marker(userPosition).addTo(map);
   }
 
-  // 等页面布局稳定后，重新计算地图大小
-  // 这样可以避免地图加载时出现灰块或显示不完整
+  // 页面布局稳定后重新计算地图尺寸
+  // 避免地图出现灰块或显示不完整
   setTimeout(() => {
     map.invalidateSize();
   }, 100);
 }
 
 
-// 开始获取用户位置
+// 请求用户位置
 function locateUser() {
-  // 判断浏览器是否支持定位功能
+  // 检查浏览器是否支持定位功能
   if ("geolocation" in navigator) {
-    // 支持定位，就向浏览器请求当前位置
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-      // 尽量使用高精度定位
-      enableHighAccuracy: true,
+    // 向浏览器请求一次当前位置
+    navigator.geolocation.getCurrentPosition(
+      onSuccess,
+      onError,
+      {
+        // 尽量使用高精度定位
+        enableHighAccuracy: true,
 
-      // 最多等待 10 秒
-      timeout: 10000,
+        // 最多等待 10 秒
+        timeout: 10000,
 
-      // 允许使用 30 秒内的缓存位置
-      maximumAge: 30000
-    });
+        // 可以使用 30 秒以内的缓存位置
+        maximumAge: 30000
+      }
+    );
   } else {
-    // 如果浏览器完全不支持定位功能，就提示用户
+    // 浏览器完全不支持定位时提示用户
     alert("This browser does not support location services.");
   }
 }
@@ -107,20 +117,18 @@ function locateUser() {
 
 // 定位成功时执行
 function onSuccess(position) {
-  // 从浏览器返回的数据中取出坐标
+  // 保存浏览器返回的纬度和经度
   myLocation.latitude = position.coords.latitude;
   myLocation.longitude = position.coords.longitude;
 
-  // 标记为已经成功获取位置
-  myLocation.isReady = true;
-
-  // 在地图上显示当前位置
+  // 在地图上显示用户当前位置
   showUserOnMap(
     myLocation.latitude,
     myLocation.longitude
   );
 
-  // 根据当前位置加载附近厕所
+  // 第一次请求附近厕所
+  // 后面的定时刷新由 loadNearbyToilets() 自己安排
   loadNearbyToilets(
     myLocation.latitude,
     myLocation.longitude
@@ -130,107 +138,135 @@ function onSuccess(position) {
 
 // 定位失败时执行
 function onError(error) {
-  // 在控制台输出错误，方便开发者调试
+  // 在控制台输出详细错误，方便开发时检查
   console.warn("Location error:", error);
 
-  // 给用户一个简单提示
-  alert("Unable to get your location. Please allow location access and try again.");
+  // 给普通用户显示简单提示
+  alert(
+    "Unable to get your location. Please allow location access and try again."
+  );
 }
 
 
-// 页面 HTML 加载完成后自动执行
+// 页面 HTML 加载完成后自动请求定位
 document.addEventListener("DOMContentLoaded", () => {
-  // 自动请求用户定位
   locateUser();
 });
 
 
 // 加载附近厕所
-// 这里采用折中方案：
-// 1. 先查 node，速度快，先显示一批厕所；
-// 2. 再查 way，补充一些被画成建筑/区域的厕所；
-// 3. 暂时不查 relation，因为 relation 更复杂，更容易导致 Overpass 请求超时。
-function loadNearbyToilets(latitude, longitude) {
+//
+// 查询顺序：
+// 1. 先查询 node 类型厕所；
+// 2. 等待 800 毫秒；
+// 3. 再查询 way 类型厕所；
+//
+// 暂时不查询 relation，因为厕所很少使用 relation 表示，
+// 而且 relation 查询可能增加 Overpass API 的处理压力。
+async function loadNearbyToilets(latitude, longitude) {
   // 搜索半径，单位是米
   const radius = 1500;
 
-  // 查询 node 类型厕所
-  // node 是一个点，通常速度最快，也最容易直接显示在地图上
-  const nodeToilet = `
-    [out:json][timeout:10];
-    node["amenity"="toilets"](around:${radius},${latitude},${longitude});
-    out center qt;
-  `;
+  // 依次查询 node 和 way
+  // for...of 会等待当前类型处理完成后再处理下一个类型
+  for (const type of ["node", "way"]) {
+    // 根据当前 type 生成 Overpass 查询语句
+    const query = `
+      [out:json][timeout:10];
+      ${type}["amenity"="toilets"]
+        (around:${radius},${latitude},${longitude});
+      out center qt;
+    `;
 
-  // 查询 way 类型厕所
-  // way 可能是一栋厕所建筑或一个区域，需要用 center 坐标显示 marker
-  const wayToilet = `
-    [out:json][timeout:10];
-    way["amenity"="toilets"](around:${radius},${latitude},${longitude});
-    out center qt;
-  `;
+    // 把查询语句转换成可发送给 Overpass API 的网址
+    const url =
+      "https://overpass-api.de/api/interpreter?data=" +
+      encodeURIComponent(query);
 
-  // 第一步：先请求 node 厕所
-  // 这样可以尽快让用户看到一批厕所 marker
-  fetchOverpass(nodeToilet)
-    .then(data => {
-      console.log("Node toilets found:", data.elements.length);
+    try {
+      // 向 Overpass API 请求厕所数据
+      const response = await fetch(url);
 
-      // 直接把 node 查询结果显示到地图上
-      showToiletsOnMap(data.elements);
-    })
-    .catch(error => {
-      console.warn("Failed to load node toilets:", error);
-    });
+      // 如果服务器返回 404、429、500、504 等错误状态，
+      // 就进入下面的 catch
+      if (!response.ok) {
+        throw new Error(
+          "Overpass request failed: " + response.status
+        );
+      }
 
-  // 第二步：稍微延迟后再请求 way 厕所
-  // 这样不会把两个请求同时压给 Overpass，减少超时概率
-  setTimeout(() => {
-    fetchOverpass(wayToilet)
-      .then(data => {
-        console.log("Way toilets found:", data.elements.length);
+      // 把服务器返回的数据解析成 JavaScript 对象
+      const data = await response.json();
 
-        // 直接把 way 查询结果也显示到地图上
-        showToiletsOnMap(data.elements);
-      })
-      .catch(error => {
-        console.warn("Failed to load way toilets:", error);
+      // 遍历本次查询得到的所有厕所数据
+      data.elements.forEach(toilet => {
+        // OSM 的 node 和 way 分别拥有自己的 ID，
+        // 所以需要把 type 和 id 组合起来作为唯一编号
+        const toiletId =
+          toilet.type + "-" + toilet.id;
+
+        // 如果当前厕所已经显示过，就跳过它
+        // 避免定时刷新后重复创建相同 marker
+        if (knownToilets.has(toiletId)) {
+          return;
+        }
+
+        // node 类型直接拥有 lat 和 lon
+        // way 类型一般使用中心位置 center.lat 和 center.lon
+        const toiletLatitude =
+          toilet.lat ?? toilet.center?.lat;
+
+        const toiletLongitude =
+          toilet.lon ?? toilet.center?.lon;
+
+        // 如果当前厕所没有完整坐标，就跳过当前厕所
+        // 这里不会停止整个函数，只会继续处理下一个厕所
+        if (
+          toiletLatitude == null ||
+          toiletLongitude == null
+        ) {
+          return;
+        }
+
+        // 在地图上添加新厕所的 marker
+        // 已经存在的厕所 marker 不会被删除
+        L.marker([
+          toiletLatitude,
+          toiletLongitude
+        ]).addTo(map);
+
+        // 记录这个厕所已经显示过
+        knownToilets.add(toiletId);
       });
-  }, 800);
-}
-
-
-// 把厕所数据显示到地图上
-// 1. 过一遍所有厕所的数据，提取所有厕所的经纬度，
-// 2. 如果经/维度没有就跳过这个厕所数据，
-// 3. 否则标记这些厕所在地图上
-function showToiletsOnMap(toilets) {
-  toilets.forEach(toilet => {
-    const latitude = toilet.lat ?? toilet.center?.lat;
-    const longitude = toilet.lon ?? toilet.center?.lon;
-
-    if (latitude == null || longitude == null) {
-      return;
+    } catch (error) {
+      // 请求失败时只在控制台显示错误
+      // 即使 node 请求失败，程序仍然会继续尝试 way
+      console.warn(
+        `Failed to load ${type} toilets:`,
+        error
+      );
     }
 
-    L.marker([latitude, longitude]).addTo(map);
-  });
-}
-
-// 请求 Overpass API
-// query：Overpass 查询语句
-function fetchOverpass(query) {
-  const url =
-    "https://overpass-api.de/api/interpreter?data=" +
-    encodeURIComponent(query);
-
-  return fetch(url).then(response => {
-    // 如果服务器返回 404、429、504 等错误，就手动抛出错误
-    if (!response.ok) {
-      throw new Error("Overpass request failed: " + response.status);
+    // node 查询结束后等待 800 毫秒，再查询 way
+    // 避免短时间内连续发送两个请求，降低出现 429 或 504 的概率
+    if (type === "node") {
+      await new Promise(resolve => {
+        setTimeout(resolve, 800);
+      });
     }
+  }
 
-    // 如果请求成功，就把返回内容解析成 JSON
-    return response.json();
-  });
+  // 如果一个厕所都没有显示，10 秒后重新查询
+  // 如果地图上已经有厕所，30 秒后重新查询
+  const refreshTime =
+    knownToilets.size === 0
+      ? 10000
+      : 30000;
+
+  // 使用 setTimeout，而不是 setInterval
+  // 这样会等本轮 node 和 way 请求全部结束后，再开始计时，
+  // 可以避免多轮请求同时运行
+  setTimeout(() => {
+    loadNearbyToilets(latitude, longitude);
+  }, refreshTime);
 }
