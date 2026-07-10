@@ -156,7 +156,7 @@ function loadNearbyToilets(latitude, longitude) {
 
   // 查询 node 类型厕所
   // node 是一个点，通常速度最快，也最容易直接显示在地图上
-  const nodeQuery = `
+  const nodeToilet = `
     [out:json][timeout:10];
     node["amenity"="toilets"](around:${radius},${latitude},${longitude});
     out center qt;
@@ -164,7 +164,7 @@ function loadNearbyToilets(latitude, longitude) {
 
   // 查询 way 类型厕所
   // way 可能是一栋厕所建筑或一个区域，需要用 center 坐标显示 marker
-  const wayQuery = `
+  const wayToilet = `
     [out:json][timeout:10];
     way["amenity"="toilets"](around:${radius},${latitude},${longitude});
     out center qt;
@@ -172,7 +172,7 @@ function loadNearbyToilets(latitude, longitude) {
 
   // 第一步：先请求 node 厕所
   // 这样可以尽快让用户看到一批厕所 marker
-  fetchOverpass(nodeQuery)
+  fetchOverpass(nodeToilet)
     .then(data => {
       console.log("Node toilets found:", data.elements.length);
 
@@ -186,7 +186,7 @@ function loadNearbyToilets(latitude, longitude) {
   // 第二步：稍微延迟后再请求 way 厕所
   // 这样不会把两个请求同时压给 Overpass，减少超时概率
   setTimeout(() => {
-    fetchOverpass(wayQuery)
+    fetchOverpass(wayToilet)
       .then(data => {
         console.log("Way toilets found:", data.elements.length);
 
@@ -201,31 +201,21 @@ function loadNearbyToilets(latitude, longitude) {
 
 
 // 把厕所数据显示到地图上
-// 注意：这个函数现在不会清空旧 marker，也不会去重
-// 它只负责把传进来的厕所数据直接加到地图上
+// 1. 过一遍所有厕所的数据，提取所有厕所的经纬度，
+// 2. 如果经/维度没有就跳过这个厕所数据，
+// 3. 否则标记这些厕所在地图上
 function showToiletsOnMap(toilets) {
-  // 如果传进来的不是数组，或者数组为空，就不继续执行
-  if (!Array.isArray(toilets) || toilets.length === 0) {
-    return;
-  }
-
-  // 遍历所有厕所数据
   toilets.forEach(toilet => {
-    // node 类型厕所直接有 lat / lon
-    // way 类型厕所通常没有 lat / lon，需要使用 center.lat / center.lon
     const latitude = toilet.lat ?? toilet.center?.lat;
     const longitude = toilet.lon ?? toilet.center?.lon;
 
-    // 如果没有有效坐标，就跳过这个厕所
     if (latitude == null || longitude == null) {
       return;
     }
 
-    // 创建厕所 marker，并添加到地图上
     L.marker([latitude, longitude]).addTo(map);
   });
 }
-
 
 // 请求 Overpass API
 // query：Overpass 查询语句
