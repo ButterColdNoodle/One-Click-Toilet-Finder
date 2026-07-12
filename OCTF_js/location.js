@@ -114,9 +114,8 @@ function locateUser() {
     // 每次定位最多等待 10 秒
     timeout: 10000,
 
-    // 最多使用 5 秒以内的缓存位置
     // 时间越短，用户 marker 跟随得越及时
-    maximumAge: 5000
+    maximumAge: 0
   });
 }
 
