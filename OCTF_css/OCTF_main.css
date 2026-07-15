@@ -25,3 +25,51 @@ h1 {
   height: calc(100vh - 80px);
   min-height: 400px;
 }
+
+/*
+  Leaflet 用户图标的最外层。
+
+  去掉 L.divIcon 默认的背景和边框。
+*/
+.user_icon {
+  background: transparent;
+  border: none;
+}
+
+
+/*
+  Leaflet 自定义用户图标的最外层。
+
+  去掉 L.divIcon 默认的背景和边框，
+  只显示里面的箭头。
+*/
+.user_icon {
+  background: transparent;
+  border: none;
+}
+
+
+/*
+  用户位置箭头。
+
+  clip-path 把一个矩形裁剪成导航指针形状。
+  箭头尖端位于顶部中央，所以默认朝上。
+*/
+.user_arrow {
+  width: 22px;
+  height: 30px;
+
+  background: #0a6aaa;
+
+  clip-path: polygon(
+    50% 0%,
+    100% 100%,
+    50% 75%,
+    0% 100%
+  );
+
+  /*
+    后续旋转时，让箭头围绕中心转动。
+  */
+  transform-origin: center;
+}
