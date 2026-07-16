@@ -49,18 +49,20 @@ let knownToilets = new Set();
 // 防止每次用户位置更新时都创建新的定时查询
 let toiletSearchStarted = false;
 
+//获得的用户手机角度
+let userDirection = null;
 
 // 初始化地图
 // 负责创建 Leaflet 地图、加载底图和绑定定位事件
-function initMap() {
+function initMap(){
   // 如果地图已经创建过，直接返回已有地图
-  if (map) {
+  if (map){
     return map;
   }
 
   // 创建 Leaflet 地图
   // zoomControl: false 隐藏默认的放大和缩小按钮
-  map = L.map("map", {
+  map = L.map("map",{
     zoomControl: false
   });
 
@@ -87,14 +89,14 @@ function initMap() {
 
 
 // 在地图上创建或移动用户当前位置 marker
-function showUserOnMap(latitude, longitude) {
+function showUserOnMap(latitude, longitude){
   const userPosition = [latitude, longitude];
 
   // 如果用户 marker 已经存在
   // 只移动原来的 marker，不重新创建
-  if (userMarker) {
+  if (userMarker){
     userMarker.setLatLng(userPosition);
-  } else {
+  }else{
     // 第一次获得位置时创建用户 marker
     // icon 指定使用 CSS 创建的自定义图标
     userMarker = L.marker(userPosition, {
@@ -106,7 +108,7 @@ function showUserOnMap(latitude, longitude) {
     map.setView(userPosition, 16);
 
     // 避免地图出现灰块或显示不完整
-    setTimeout(() => {
+    setTimeout(() =>{
       map.invalidateSize();
     }, 100);
   }
@@ -114,12 +116,12 @@ function showUserOnMap(latitude, longitude) {
 
 
 // 开始持续监听用户位置
-function locateUser() {
+function locateUser(){
   // 先初始化地图
   initMap();
 
   // 检查浏览器是否支持定位
-  if (!navigator.geolocation) {
+  if (!navigator.geolocation){
     alert("This browser does not support location services.");
     return;
   }
@@ -147,7 +149,7 @@ function locateUser() {
 
 
 // Leaflet 成功获得位置时执行
-function onLocationFound(event) {
+function onLocationFound(event){
   // 保存最新纬度
   myLocation.latitude = event.latlng.lat;
 
@@ -162,7 +164,7 @@ function onLocationFound(event) {
 
   // 厕所查询只启动一次
   // 防止每次位置更新时都创建新的查询循环
-  if (!toiletSearchStarted) {
+  if (!toiletSearchStarted){
     toiletSearchStarted = true;
 
     loadNearbyToilets();
@@ -171,7 +173,7 @@ function onLocationFound(event) {
 
 
 // Leaflet 定位失败时执行
-function onLocationError(error) {
+function onLocationError(error){
   // 在控制台显示详细错误
   console.warn("Location error:", error);
 
@@ -204,7 +206,7 @@ window.addEventListener("pagehide", () => {
 // 3. 再查询 way；
 // 4. 只添加以前没有显示过的新厕所；
 // 5. 不删除地图上已有的厕所。
-async function loadNearbyToilets() {
+async function loadNearbyToilets(){
   // 搜索半径，单位是米
   const radius = 1500;
 
@@ -214,12 +216,12 @@ async function loadNearbyToilets() {
 
   // 如果还没有取得用户坐标
   // 就不发送厕所查询请求
-  if (latitude == null || longitude == null) {
+  if (latitude == null || longitude == null){
     return;
   }
 
   // 依次查询 node 和 way
-  for (const type of ["node", "way"]) {
+  for (const type of ["node", "way"]){
     const query = `
       [out:json][timeout:10];
       ${type}["amenity"="toilets"]
@@ -323,4 +325,18 @@ async function loadNearbyToilets() {
   setTimeout(() => {
     loadNearbyToilets();
   }, refreshTime);
+}
+
+//获得用户手机朝向
+function userDirectionGet (){
+  //ios和安卓获得朝向的方法不太一样
+  if(DeviceTyp == "ios"){
+    // iOS 给出的值已经是顺时针指南针方向
+    userDirection = event.webkitCompassHeading;
+  }else if(deviceType === "android"){
+    userDirection = (360 - event.alpha) % 360;
+  } // 当前没有获得可用方向
+  else {
+    return;
+  }
 }

@@ -37,8 +37,7 @@
           <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
         <!--放在body最底部-->
         <!--若浏览器支持serviceworker则加载并安装serviceworker脚本-->
-        <script src="OCTF_js/register.js"></script>
-        <script src="OCTF_js/location.js"></script>
+
         <script>
 // 获取我们在上面定义的 HTML 元素
             const installBtn = document.getElementById('install_Btn'); // 获取安装按钮
@@ -143,7 +142,11 @@
                 installBtn.style.display = 'none';
                 iosPrompt.style.display = 'none';
             });
+
+             const deviceTyp = detectDevice();
         </script>
+        <script src="OCTF_js/register.js"></script>
+        <script src="OCTF_js/location.js"></script>
     </body>
 
 
