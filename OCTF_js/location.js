@@ -2,7 +2,8 @@
 // 2. 把最新经纬度保存到 myLocation；
 // 3. 定位成功时移动用户 marker；
 // 4. 定位失败时给用户反馈；
-// 5. 第一次定位成功后启动附近厕所查询。
+// 5. 第一次定位成功后启动附近厕所查询；
+// 6. 获取手机朝向，并让用户箭头跟随旋转。
 
 
 // 保存用户最新位置
@@ -24,11 +25,12 @@ let map = null;
 let userMarker = null;
 
 
-//创建用户位置的自定义箭头图标。
+// 创建用户位置的自定义箭头图标
 const user_icon = L.divIcon({
   // Leaflet 图标最外层的 CSS class
   className: "user_icon",
 
+  // 图标内部真正显示和旋转的箭头
   html: `
     <div class="user_arrow"></div>
   `,
@@ -40,6 +42,7 @@ const user_icon = L.divIcon({
   iconAnchor: [11, 15]
 });
 
+
 // 保存当前页面运行期间已经显示过的厕所
 // Set 用来保存不重复的数据
 let knownToilets = new Set();
@@ -49,20 +52,33 @@ let knownToilets = new Set();
 // 防止每次用户位置更新时都创建新的定时查询
 let toiletSearchStarted = false;
 
-//获得的用户手机角度
+
+// 保存获得的用户手机方向角
+//
+// 0   = 北
+// 90  = 东
+// 180 = 南
+// 270 = 西
 let userDirection = null;
+
+
+// 记录方向监听是否已经启动
+// 防止重复添加相同的方向事件监听
+let directionListeningStarted = false;
+
+
 
 // 初始化地图
 // 负责创建 Leaflet 地图、加载底图和绑定定位事件
-function initMap(){
+function initMap() {
   // 如果地图已经创建过，直接返回已有地图
-  if (map){
+  if (map) {
     return map;
   }
 
   // 创建 Leaflet 地图
   // zoomControl: false 隐藏默认的放大和缩小按钮
-  map = L.map("map",{
+  map = L.map("map", {
     zoomControl: false
   });
 
@@ -88,52 +104,59 @@ function initMap(){
 }
 
 
+
 // 在地图上创建或移动用户当前位置 marker
-function showUserOnMap(latitude, longitude){
+function showUserOnMap(latitude, longitude) {
   const userPosition = [latitude, longitude];
 
   // 如果用户 marker 已经存在
   // 只移动原来的 marker，不重新创建
-  if (userMarker){
+  if (userMarker) {
     userMarker.setLatLng(userPosition);
-  }else{
+  } else {
     // 第一次获得位置时创建用户 marker
-    // icon 指定使用 CSS 创建的自定义图标
     userMarker = L.marker(userPosition, {
       icon: user_icon
     }).addTo(map);
 
+    /*
+      如果方向传感器比定位更早获得了方向，
+      marker 创建后立即旋转一次箭头。
+    */
+    userArrowRotate();
+
     // 只在第一次定位时把地图移动到用户位置
-    // 后续位置变化不会强制移动地图中心
     map.setView(userPosition, 16);
 
     // 避免地图出现灰块或显示不完整
-    setTimeout(() =>{
+    setTimeout(() => {
       map.invalidateSize();
     }, 100);
   }
 }
 
 
+
 // 开始持续监听用户位置
-function locateUser(){
+function locateUser() {
   // 先初始化地图
   initMap();
 
   // 检查浏览器是否支持定位
-  if (!navigator.geolocation){
-    alert("This browser does not support location services.");
+  if (!navigator.geolocation) {
+    alert(
+      "This browser does not support location services."
+    );
+
     return;
   }
 
   // 使用 Leaflet 的定位功能
   map.locate({
     // 持续监听用户位置
-    // 而不是只获取一次位置
     watch: true,
 
-    // 不让 Leaflet 每次更新位置时
-    // 自动移动地图中心
+    // 不让 Leaflet 每次更新位置时移动地图中心
     setView: false,
 
     // 尽量使用高精度定位
@@ -148,8 +171,9 @@ function locateUser(){
 }
 
 
+
 // Leaflet 成功获得位置时执行
-function onLocationFound(event){
+function onLocationFound(event) {
   // 保存最新纬度
   myLocation.latitude = event.latlng.lat;
 
@@ -163,8 +187,7 @@ function onLocationFound(event){
   );
 
   // 厕所查询只启动一次
-  // 防止每次位置更新时都创建新的查询循环
-  if (!toiletSearchStarted){
+  if (!toiletSearchStarted) {
     toiletSearchStarted = true;
 
     loadNearbyToilets();
@@ -172,41 +195,240 @@ function onLocationFound(event){
 }
 
 
+
 // Leaflet 定位失败时执行
-function onLocationError(error){
+function onLocationError(error) {
   // 在控制台显示详细错误
   console.warn("Location error:", error);
 
   // 给用户显示简单提示
   alert(
-    "Unable to get your location. Please allow location access and try again."
+    "Unable to get your location.\n" +
+    "Please allow location access and try again."
   );
 }
 
 
-// 页面 HTML 加载完成后开始持续定位
-document.addEventListener("DOMContentLoaded", () => {
-  locateUser();
-});
+
+// 获得用户手机朝向
+//
+// event 是浏览器触发方向事件时，
+// 自动传入这个函数的数据。
+function userDirectionGet(event) {
+  // iOS 和 Android 获得朝向的方法不太一样
+  if (deviceTyp === "ios") {
+    // iOS 给出的值已经是顺时针指南针方向
+    userDirection = event.webkitCompassHeading;
+  }
+
+  else if (deviceTyp === "android") {
+    /*
+      Android 的 alpha 方向和指南针方向相反。
+
+      因此使用：
+      360 - alpha
+    */
+    userDirection =
+      (360 - event.alpha) % 360;
+  }
+
+  else {
+    // 桌面设备或未知设备不处理方向
+    return;
+  }
+
+  // 暂时在控制台显示获得的方向
+  console.log(
+    "User direction:",
+    userDirection
+  );
+
+  // 获得新方向后旋转用户箭头
+  userArrowRotate();
+}
+
+
+
+// 根据 userDirection 旋转地图上的用户箭头
+function userArrowRotate() {
+  // 用户位置 marker 还没有建立时不能旋转
+  if (!userMarker) {
+    return;
+  }
+
+  // 还没有获得手机方向时不能旋转
+  if (userDirection == null) {
+    return;
+  }
+
+  // 获得 Leaflet 创建的 marker HTML 元素
+  const userMarkerElement =
+    userMarker.getElement();
+
+  // marker 元素还没有显示在地图上时停止
+  if (!userMarkerElement) {
+    return;
+  }
+
+  // 在用户 marker 里面找到真正的箭头元素
+  const userArrowElement =
+    userMarkerElement.querySelector(
+      ".user_arrow"
+    );
+
+  // 找不到箭头元素时停止
+  if (!userArrowElement) {
+    return;
+  }
+
+  // 根据手机方向角度旋转箭头
+  userArrowElement.style.transform =
+    `rotate(${userDirection}deg)`;
+}
+
+
+
+// 开始监听手机方向
+async function startDeviceDirection() {
+  // 已经开始监听时，不重复添加事件
+  if (directionListeningStarted) {
+    return;
+  }
+
+  // 浏览器不支持方向传感器
+  if (!window.DeviceOrientationEvent) {
+    console.warn(
+      "This browser does not support device orientation."
+    );
+
+    return;
+  }
+
+  // iOS 的处理
+  if (deviceTyp === "ios") {
+    /*
+      部分 iOS Safari 需要用户先允许
+      网页读取方向传感器。
+    */
+    if (
+      typeof DeviceOrientationEvent
+        .requestPermission === "function"
+    ) {
+      try {
+        const permission =
+          await DeviceOrientationEvent
+            .requestPermission();
+
+        // 用户没有允许权限
+        if (permission !== "granted") {
+          console.warn(
+            "Device orientation permission was denied."
+          );
+
+          return;
+        }
+      } catch (error) {
+        console.warn(
+          "Unable to request device orientation permission:",
+          error
+        );
+
+        return;
+      }
+    }
+
+    /*
+      iOS 使用 deviceorientation。
+
+      浏览器每次获得新方向时，
+      都会执行 userDirectionGet(event)。
+    */
+    window.addEventListener(
+      "deviceorientation",
+      userDirectionGet
+    );
+
+    directionListeningStarted = true;
+  }
+
+  // Android 的处理
+  else if (deviceTyp === "android") {
+    /*
+      Android 使用绝对方向事件。
+
+      浏览器每次获得新方向时，
+      都会执行 userDirectionGet(event)。
+    */
+    window.addEventListener(
+      "deviceorientationabsolute",
+      userDirectionGet
+    );
+
+    directionListeningStarted = true;
+  }
+}
+
+
+
+// 页面 HTML 加载完成后启动功能
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    // 开始持续定位用户
+    locateUser();
+
+    /*
+      Android 通常可以直接开始监听方向。
+    */
+    if (deviceTyp === "android") {
+      startDeviceDirection();
+    }
+
+    /*
+      iOS 的方向权限必须由点击等用户操作触发。
+
+      用户第一次点击网页时：
+      1. 申请方向权限；
+      2. 开始监听方向。
+
+      once: true 表示只执行一次。
+    */
+    else if (deviceTyp === "ios") {
+      document.addEventListener(
+        "click",
+        startDeviceDirection,
+        {
+          once: true
+        }
+      );
+    }
+  }
+);
+
 
 
 // 页面被关闭或离开时停止持续定位
-window.addEventListener("pagehide", () => {
-  if (map) {
-    map.stopLocate();
+window.addEventListener(
+  "pagehide",
+  () => {
+    if (map) {
+      map.stopLocate();
+    }
   }
-});
+);
+
 
 
 // 加载附近厕所
 //
 // 每轮查询都会读取 myLocation 中的最新位置：
+//
 // 1. 先查询 node；
 // 2. 等待 800 毫秒；
 // 3. 再查询 way；
 // 4. 只添加以前没有显示过的新厕所；
 // 5. 不删除地图上已有的厕所。
-async function loadNearbyToilets(){
+async function loadNearbyToilets() {
   // 搜索半径，单位是米
   const radius = 1500;
 
@@ -216,16 +438,21 @@ async function loadNearbyToilets(){
 
   // 如果还没有取得用户坐标
   // 就不发送厕所查询请求
-  if (latitude == null || longitude == null){
+  if (
+    latitude == null ||
+    longitude == null
+  ) {
     return;
   }
 
   // 依次查询 node 和 way
-  for (const type of ["node", "way"]){
+  for (const type of ["node", "way"]) {
     const query = `
       [out:json][timeout:10];
+
       ${type}["amenity"="toilets"]
-        (around:${radius},${latitude},${longitude});
+      (around:${radius},${latitude},${longitude});
+
       out center qt;
     `;
 
@@ -239,28 +466,29 @@ async function loadNearbyToilets(){
       const response = await fetch(url);
 
       // 如果服务器返回错误状态
-      // 主动抛出错误并进入 catch
       if (!response.ok) {
         throw new Error(
-          "Overpass request failed: " + response.status
+          "Overpass request failed: " +
+          response.status
         );
       }
 
-      // 把服务器返回的 JSON 转换成 JavaScript 对象
+      // 把返回的 JSON 转换成 JavaScript 对象
       const data = await response.json();
 
       // 遍历本次查询到的所有厕所
       data.elements.forEach(toilet => {
-        // 使用厕所类型和编号组成唯一 ID
-        //
-        // 例如：
-        // node-12345
-        // way-12345
+        /*
+          使用厕所类型和编号组成唯一 ID。
+
+          例如：
+          node-12345
+          way-12345
+        */
         const toiletId =
           toilet.type + "-" + toilet.id;
 
-        // 如果厕所已经显示过
-        // 就跳过当前厕所
+        // 如果厕所已经显示过，跳过
         if (knownToilets.has(toiletId)) {
           return;
         }
@@ -273,8 +501,7 @@ async function loadNearbyToilets(){
         const toiletLongitude =
           toilet.lon ?? toilet.center?.lon;
 
-        // 如果厕所没有完整坐标
-        // 就跳过当前厕所
+        // 如果厕所没有完整坐标，跳过
         if (
           toiletLatitude == null ||
           toiletLongitude == null
@@ -283,7 +510,6 @@ async function loadNearbyToilets(){
         }
 
         // 在地图上添加厕所 marker
-        // 不删除以前已经显示的厕所
         L.marker([
           toiletLatitude,
           toiletLongitude
@@ -293,8 +519,10 @@ async function loadNearbyToilets(){
         knownToilets.add(toiletId);
       });
     } catch (error) {
-      // 当前类型查询失败后
-      // 仍然继续尝试另一种类型
+      /*
+        当前类型查询失败后，
+        仍然继续尝试另一种类型。
+      */
       console.warn(
         `Failed to load ${type} toilets:`,
         error
@@ -310,65 +538,20 @@ async function loadNearbyToilets(){
     }
   }
 
-  // 如果一个厕所都没有显示
-  // 10 秒后重新查询
-  //
-  // 如果已经显示了厕所
-  // 30 秒后重新查询
+  /*
+    如果一个厕所都没有显示：
+    10 秒后重新查询。
+
+    如果已经显示了厕所：
+    30 秒后重新查询。
+  */
   const refreshTime =
     knownToilets.size === 0
       ? 10000
       : 30000;
 
-  // 本轮请求完成后
-  // 再安排下一轮查询
+  // 本轮请求完成后安排下一轮查询
   setTimeout(() => {
     loadNearbyToilets();
   }, refreshTime);
-}
-
-//获得用户手机朝向
-function userDirectionGet (){
-  //ios和安卓获得朝向的方法不太一样
-  if(DeviceTyp == "ios"){
-    // iOS 给出的值已经是顺时针指南针方向
-    userDirection = event.webkitCompassHeading;
-  }else if(deviceType === "android"){
-    userDirection = (360 - event.alpha) % 360;
-  }
-  else{
-    return;
-  }
-
-  // 获得新方向后，旋转用户箭头
-  userArrowRotate();
-}
-
-// 根据 userDirection 旋转地图上的用户箭头
-function userArrowRotate(){
-  // 用户位置标记还没有建立时，暂时不能旋转
-  if (!userMarker){
-    return;
-  }
-
-  // 获得 Leaflet 创建的用户标记 HTML 元素
-  const userMarkerElement = userMarker.getElement();
-
-  // 标记元素还没有显示在地图上时停止
-  if (!userMarkerElement){
-    return;
-  }
-
-  // 在用户标记里面找到箭头元素
-  const userArrowElement =
-    userMarkerElement.querySelector(".user_arrow");
-
-  // 找不到箭头元素时停止
-  if (!userArrowElement){
-    return;
-  }
-
-  // 根据手机方向角度旋转箭头
-  userArrowElement.style.transform =
-    `rotate(${userDirection}deg)`;
 }
