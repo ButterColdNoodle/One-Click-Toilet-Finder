@@ -335,8 +335,40 @@ function userDirectionGet (){
     userDirection = event.webkitCompassHeading;
   }else if(deviceType === "android"){
     userDirection = (360 - event.alpha) % 360;
-  } // 当前没有获得可用方向
-  else {
+  }
+  else{
     return;
   }
+
+  // 获得新方向后，旋转用户箭头
+  userArrowRotate();
+}
+
+// 根据 userDirection 旋转地图上的用户箭头
+function userArrowRotate(){
+  // 用户位置标记还没有建立时，暂时不能旋转
+  if (!userMarker){
+    return;
+  }
+
+  // 获得 Leaflet 创建的用户标记 HTML 元素
+  const userMarkerElement = userMarker.getElement();
+
+  // 标记元素还没有显示在地图上时停止
+  if (!userMarkerElement){
+    return;
+  }
+
+  // 在用户标记里面找到箭头元素
+  const userArrowElement =
+    userMarkerElement.querySelector(".user_arrow");
+
+  // 找不到箭头元素时停止
+  if (!userArrowElement){
+    return;
+  }
+
+  // 根据手机方向角度旋转箭头
+  userArrowElement.style.transform =
+    `rotate(${userDirection}deg)`;
 }
