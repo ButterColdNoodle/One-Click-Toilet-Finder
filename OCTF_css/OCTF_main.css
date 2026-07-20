@@ -73,5 +73,9 @@ h1 {
   */
   transform-origin: center;
 
-
+   /*
+    当 JavaScript 修改 rotate() 角度时，
+    不立即跳到新角度，而是在 0.1 秒内平滑转过去。
+  */
+  transition: transform 0.1s ease-out;
 }

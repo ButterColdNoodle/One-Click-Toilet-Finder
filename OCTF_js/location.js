@@ -133,6 +133,23 @@ function showUserOnMap(latitude, longitude) {
       map.invalidateSize();
     }, 100);
   }
+
+  // 更新用户 marker 的位置
+userMarker.setLatLng([
+  latitude,
+  longitude
+]);
+
+// 让用户箭头始终保持在地图中心
+map.setView(
+  [latitude, longitude],
+  //保持当前缩放等级
+  map.getZoom(),
+  {
+    //表示直接跟随位置，避免 GPS 更新较频繁时地图反复播放移动动画
+    animate: false
+  }
+);
 }
 
 
@@ -555,3 +572,4 @@ async function loadNearbyToilets() {
     loadNearbyToilets();
   }, refreshTime);
 }
+
