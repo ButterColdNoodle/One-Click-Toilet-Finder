@@ -1,10 +1,18 @@
-// 1. 使用 Leaflet 请求并持续监听用户当前位置；
-// 2. 把最新经纬度保存到 myLocation；
-// 3. 定位成功时移动用户 marker；
-// 4. 定位失败时给用户反馈；
-// 5. 第一次定位成功后启动附近厕所查询；
-// 6. 获取手机朝向，并让用户箭头跟随旋转。
+/*
+1. 使用 Leaflet 请求并持续监听用户当前位置；
+2. 把最新经纬度保存到 myLocation；
+3. 定位成功时移动用户 marker；
+4. 让地图中心跟随用户位置；
+5. 第一次定位成功后启动附近厕所查询；
+6. 获取手机朝向，并让用户箭头跟随旋转；
+7. 点击 wc_Btn 后找到最近厕所；
+8. 把最近厕所的 marker 放大 1.5 倍。
+*/
 
+
+// ==============================
+// 用户位置
+// ==============================
 
 // 保存用户最新位置
 // latitude：纬度
@@ -15,10 +23,18 @@ let myLocation = {
 };
 
 
+// ==============================
+// 地图
+// ==============================
+
 // 保存 Leaflet 地图对象
 // 地图第一次创建后会存到这里，避免重复创建
 let map = null;
 
+
+// ==============================
+// 用户 marker
+// ==============================
 
 // 保存用户当前位置的 marker
 // 第一次定位时创建，之后只移动原来的 marker
@@ -43,15 +59,59 @@ const user_icon = L.divIcon({
 });
 
 
+// ==============================
+// 厕所 marker
+// ==============================
+
 // 保存当前页面运行期间已经显示过的厕所
 // Set 用来保存不重复的数据
 let knownToilets = new Set();
+
+
+// 保存所有厕所的 marker 和坐标
+// 点击按钮时会从这里寻找最近厕所
+let toiletMarkers = [];
+
+
+// 保存当前被放大的厕所 marker
+// 下一次点击按钮时，可以先恢复它的大小
+let bigToiletMarker = null;
+
+
+// 普通厕所 marker 图标
+const toiletIcon = new L.Icon.Default();
+
+
+// 放大 1.5 倍的厕所 marker 图标
+//
+// Leaflet 默认 marker 大约为：
+// 25 × 41
+//
+// 放大 1.5 倍后约为：
+// 38 × 62
+const bigToiletIcon = new L.Icon.Default({
+  // 放大后的图标大小
+  iconSize: [38, 62],
+
+  // marker 底部尖端继续对准厕所坐标
+  iconAnchor: [19, 62],
+
+  // popup 的位置
+  popupAnchor: [1, -52],
+
+  // 放大后的阴影大小
+  shadowSize: [62, 62]
+});
 
 
 // 记录厕所查询是否已经启动
 // 防止每次用户位置更新时都创建新的定时查询
 let toiletSearchStarted = false;
 
+
+// ==============================
+// 手机方向
+// ==============================
 
 // 保存获得的用户手机方向角
 //
@@ -67,17 +127,20 @@ let userDirection = null;
 let directionListeningStarted = false;
 
 
-
+// ==============================
 // 初始化地图
+// ==============================
+
 // 负责创建 Leaflet 地图、加载底图和绑定定位事件
 function initMap() {
-  // 如果地图已经创建过，直接返回已有地图
+  // 如果地图已经创建过
+  // 直接返回已有地图
   if (map) {
     return map;
   }
 
   // 创建 Leaflet 地图
-  // zoomControl: false 隐藏默认的放大和缩小按钮
+  // zoomControl: false 隐藏默认缩放按钮
   map = L.map("map", {
     zoomControl: false
   });
@@ -90,43 +153,69 @@ function initMap() {
 
       // 地图来源署名，不能删除
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        '&copy; OpenStreetMap contributors, &copy; CARTO'
     }
   ).addTo(map);
 
   // Leaflet 成功获得用户位置时执行
-  map.on("locationfound", onLocationFound);
+  map.on(
+    "locationfound",
+    onLocationFound
+  );
 
   // Leaflet 获取用户位置失败时执行
-  map.on("locationerror", onLocationError);
+  map.on(
+    "locationerror",
+    onLocationError
+  );
 
   return map;
 }
 
 
+// ==============================
+// 显示用户位置
+// ==============================
 
 // 在地图上创建或移动用户当前位置 marker
-function showUserOnMap(latitude, longitude) {
-  const userPosition = [latitude, longitude];
+function showUserOnMap(
+  latitude,
+  longitude
+) {
+  const userPosition = [
+    latitude,
+    longitude
+  ];
 
   // 如果用户 marker 已经存在
-  // 只移动原来的 marker，不重新创建
   if (userMarker) {
-    userMarker.setLatLng(userPosition);
-  } else {
+    // 只移动原来的 marker
+    // 不重复创建新 marker
+    userMarker.setLatLng(
+      userPosition
+    );
+  }
+
+  else {
     // 第一次获得位置时创建用户 marker
-    userMarker = L.marker(userPosition, {
-      icon: user_icon
-    }).addTo(map);
+    userMarker = L.marker(
+      userPosition,
+      {
+        icon: user_icon
+      }
+    ).addTo(map);
 
     /*
-      如果方向传感器比定位更早获得了方向，
-      marker 创建后立即旋转一次箭头。
+    如果方向传感器比定位更早获得方向，
+    marker 创建后立即旋转一次箭头。
     */
     userArrowRotate();
 
-    // 只在第一次定位时把地图移动到用户位置
-    map.setView(userPosition, 16);
+    // 第一次定位时设置地图位置和缩放等级
+    map.setView(
+      userPosition,
+      16
+    );
 
     // 避免地图出现灰块或显示不完整
     setTimeout(() => {
@@ -135,24 +224,37 @@ function showUserOnMap(latitude, longitude) {
   }
 
   // 更新用户 marker 的位置
-userMarker.setLatLng([
-  latitude,
-  longitude
-]);
+  userMarker.setLatLng([
+    latitude,
+    longitude
+  ]);
 
-// 让用户箭头始终保持在地图中心
-map.setView(
-  [latitude, longitude],
-  //保持当前缩放等级
-  map.getZoom(),
-  {
-    //表示直接跟随位置，避免 GPS 更新较频繁时地图反复播放移动动画
-    animate: false
-  }
-);
+  // 让用户箭头始终保持在地图中心
+  map.setView(
+    [
+      latitude,
+      longitude
+    ],
+
+    // 保持当前缩放等级
+    map.getZoom(),
+
+    {
+      /*
+      直接移动地图，不播放平移动画。
+
+      避免 GPS 更新比较频繁时，
+      地图反复播放移动动画。
+      */
+      animate: false
+    }
+  );
 }
 
 
+// ==============================
+// 开始定位
+// ==============================
 
 // 开始持续监听用户位置
 function locateUser() {
@@ -173,7 +275,8 @@ function locateUser() {
     // 持续监听用户位置
     watch: true,
 
-    // 不让 Leaflet 每次更新位置时移动地图中心
+    // 不让 Leaflet 自动移动地图
+    // 地图移动由 showUserOnMap() 控制
     setView: false,
 
     // 尽量使用高精度定位
@@ -188,14 +291,15 @@ function locateUser() {
 }
 
 
-
 // Leaflet 成功获得位置时执行
 function onLocationFound(event) {
   // 保存最新纬度
-  myLocation.latitude = event.latlng.lat;
+  myLocation.latitude =
+    event.latlng.lat;
 
   // 保存最新经度
-  myLocation.longitude = event.latlng.lng;
+  myLocation.longitude =
+    event.latlng.lng;
 
   // 创建或移动用户 marker
   showUserOnMap(
@@ -212,11 +316,13 @@ function onLocationFound(event) {
 }
 
 
-
 // Leaflet 定位失败时执行
 function onLocationError(error) {
   // 在控制台显示详细错误
-  console.warn("Location error:", error);
+  console.warn(
+    "Location error:",
+    error
+  );
 
   // 给用户显示简单提示
   alert(
@@ -226,24 +332,27 @@ function onLocationError(error) {
 }
 
 
+// ==============================
+// 获得手机方向
+// ==============================
 
-// 获得用户手机朝向
-//
-// event 是浏览器触发方向事件时，
-// 自动传入这个函数的数据。
+// event 是浏览器触发方向事件时
+// 自动传入这个函数的数据
 function userDirectionGet(event) {
   // iOS 和 Android 获得朝向的方法不太一样
   if (deviceTyp === "ios") {
     // iOS 给出的值已经是顺时针指南针方向
-    userDirection = event.webkitCompassHeading;
+    userDirection =
+      event.webkitCompassHeading;
   }
 
   else if (deviceTyp === "android") {
     /*
-      Android 的 alpha 方向和指南针方向相反。
+    Android 的 alpha 方向和指南针方向相反。
 
-      因此使用：
-      360 - alpha
+    因此使用：
+
+    360 - alpha
     */
     userDirection =
       (360 - event.alpha) % 360;
@@ -263,7 +372,6 @@ function userDirectionGet(event) {
   // 获得新方向后旋转用户箭头
   userArrowRotate();
 }
-
 
 
 // 根据 userDirection 旋转地图上的用户箭头
@@ -304,10 +412,131 @@ function userArrowRotate() {
 }
 
 
+// ==============================
+// 找到最近厕所
+// ==============================
 
-// 开始监听手机方向
+// 点击按钮后执行
+// 找到距离用户最近的厕所
+// 并把最近厕所 marker 放大 1.5 倍
+function enlargeNearestToilet() {
+  // 地图还没有创建时停止
+  if (!map) {
+    console.warn(
+      "The map is not ready yet."
+    );
+
+    return;
+  }
+
+  // 还没有获得用户位置时停止
+  if (
+    myLocation.latitude == null ||
+    myLocation.longitude == null
+  ) {
+    console.warn(
+      "The user's location is not available yet."
+    );
+
+    return;
+  }
+
+  // 地图上还没有任何厕所 marker
+  if (toiletMarkers.length === 0) {
+    console.warn(
+      "No toilet markers are available yet."
+    );
+
+    return;
+  }
+
+  // 保存目前找到的最近厕所
+  let nearestToilet = null;
+
+  // 最近距离一开始设为无限大
+  // 第一个厕所的距离一定会小于它
+  let nearestDistance = Infinity;
+
+  // 遍历已经显示的所有厕所
+  toiletMarkers.forEach(toilet => {
+    // 计算用户位置到当前厕所的距离
+    // 返回值单位是米
+    const distance = map.distance(
+      [
+        myLocation.latitude,
+        myLocation.longitude
+      ],
+      [
+        toilet.latitude,
+        toilet.longitude
+      ]
+    );
+
+    // 如果当前厕所比之前保存的厕所更近
+    if (distance < nearestDistance) {
+      // 保存新的最近距离
+      nearestDistance = distance;
+
+      // 保存新的最近厕所
+      nearestToilet = toilet;
+    }
+  });
+
+  // 没有成功找到厕所时停止
+  if (!nearestToilet) {
+    return;
+  }
+
+  // 如果之前已经有一个被放大的厕所
+  if (bigToiletMarker) {
+    // 恢复为普通图标
+    bigToiletMarker.setIcon(
+      toiletIcon
+    );
+
+    // 恢复正常显示层级
+    bigToiletMarker.setZIndexOffset(
+      0
+    );
+  }
+
+  // 把本次最近厕所的 marker 放大
+  nearestToilet.marker.setIcon(
+    bigToiletIcon
+  );
+
+  // 让放大的 marker 显示在其他 marker 上面
+  nearestToilet.marker.setZIndexOffset(
+    1000
+  );
+
+  // 保存当前被放大的 marker
+  // 下一次点击按钮时需要恢复它
+  bigToiletMarker =
+    nearestToilet.marker;
+
+  // 在控制台显示最近厕所的 ID
+  console.log(
+    "Nearest toilet:",
+    nearestToilet.id
+  );
+
+  // 在控制台显示最近厕所的直线距离
+  console.log(
+    "Nearest toilet distance:",
+    nearestDistance,
+    "meters"
+  );
+}
+
+
+// ==============================
+// 开始监听方向
+// ==============================
+
 async function startDeviceDirection() {
-  // 已经开始监听时，不重复添加事件
+  // 已经开始监听时
+  // 不重复添加事件
   if (directionListeningStarted) {
     return;
   }
@@ -324,8 +553,8 @@ async function startDeviceDirection() {
   // iOS 的处理
   if (deviceTyp === "ios") {
     /*
-      部分 iOS Safari 需要用户先允许
-      网页读取方向传感器。
+    部分 iOS Safari 需要用户先允许
+    网页读取方向传感器。
     */
     if (
       typeof DeviceOrientationEvent
@@ -344,7 +573,9 @@ async function startDeviceDirection() {
 
           return;
         }
-      } catch (error) {
+      }
+
+      catch (error) {
         console.warn(
           "Unable to request device orientation permission:",
           error
@@ -355,10 +586,10 @@ async function startDeviceDirection() {
     }
 
     /*
-      iOS 使用 deviceorientation。
+    iOS 使用 deviceorientation。
 
-      浏览器每次获得新方向时，
-      都会执行 userDirectionGet(event)。
+    浏览器每次获得新方向时，
+    都会执行 userDirectionGet(event)。
     */
     window.addEventListener(
       "deviceorientation",
@@ -371,10 +602,10 @@ async function startDeviceDirection() {
   // Android 的处理
   else if (deviceTyp === "android") {
     /*
-      Android 使用绝对方向事件。
+    Android 使用绝对方向事件。
 
-      浏览器每次获得新方向时，
-      都会执行 userDirectionGet(event)。
+    浏览器每次获得新方向时，
+    都会执行 userDirectionGet(event)。
     */
     window.addEventListener(
       "deviceorientationabsolute",
@@ -386,6 +617,9 @@ async function startDeviceDirection() {
 }
 
 
+// ==============================
+// 页面启动
+// ==============================
 
 // 页面 HTML 加载完成后启动功能
 document.addEventListener(
@@ -394,21 +628,43 @@ document.addEventListener(
     // 开始持续定位用户
     locateUser();
 
+    // 获得寻找最近厕所按钮
+    const wcBtn =
+      document.getElementById(
+        "wc_Btn"
+      );
+
+    // 确认按钮存在
+    if (wcBtn) {
+      // 点击按钮后寻找最近厕所
+      wcBtn.addEventListener(
+        "click",
+        enlargeNearestToilet
+      );
+    }
+
+    else {
+      console.warn(
+        "wc_Btn was not found."
+      );
+    }
+
     /*
-      Android 通常可以直接开始监听方向。
+    Android 通常可以直接开始监听方向。
     */
     if (deviceTyp === "android") {
       startDeviceDirection();
     }
 
     /*
-      iOS 的方向权限必须由点击等用户操作触发。
+    iOS 的方向权限必须由点击等用户操作触发。
 
-      用户第一次点击网页时：
-      1. 申请方向权限；
-      2. 开始监听方向。
+    用户第一次点击网页时：
 
-      once: true 表示只执行一次。
+    1. 申请方向权限；
+    2. 开始监听方向。
+
+    once: true 表示只执行一次。
     */
     else if (deviceTyp === "ios") {
       document.addEventListener(
@@ -423,7 +679,6 @@ document.addEventListener(
 );
 
 
-
 // 页面被关闭或离开时停止持续定位
 window.addEventListener(
   "pagehide",
@@ -435,23 +690,29 @@ window.addEventListener(
 );
 
 
-
+// ==============================
 // 加载附近厕所
-//
-// 每轮查询都会读取 myLocation 中的最新位置：
-//
-// 1. 先查询 node；
-// 2. 等待 800 毫秒；
-// 3. 再查询 way；
-// 4. 只添加以前没有显示过的新厕所；
-// 5. 不删除地图上已有的厕所。
+// ==============================
+
+/*
+每轮查询都会读取 myLocation 中的最新位置：
+
+1. 先查询 node；
+2. 等待 800 毫秒；
+3. 再查询 way；
+4. 只添加以前没有显示过的新厕所；
+5. 不删除地图上已有的厕所。
+*/
 async function loadNearbyToilets() {
   // 搜索半径，单位是米
   const radius = 1500;
 
   // 每轮查询开始时读取用户最新坐标
-  const latitude = myLocation.latitude;
-  const longitude = myLocation.longitude;
+  const latitude =
+    myLocation.latitude;
+
+  const longitude =
+    myLocation.longitude;
 
   // 如果还没有取得用户坐标
   // 就不发送厕所查询请求
@@ -463,7 +724,12 @@ async function loadNearbyToilets() {
   }
 
   // 依次查询 node 和 way
-  for (const type of ["node", "way"]) {
+  for (
+    const type of [
+      "node",
+      "way"
+    ]
+  ) {
     const query = `
       [out:json][timeout:10];
 
@@ -480,7 +746,8 @@ async function loadNearbyToilets() {
 
     try {
       // 向 Overpass API 请求厕所数据
-      const response = await fetch(url);
+      const response =
+        await fetch(url);
 
       // 如果服务器返回错误状态
       if (!response.ok) {
@@ -491,54 +758,99 @@ async function loadNearbyToilets() {
       }
 
       // 把返回的 JSON 转换成 JavaScript 对象
-      const data = await response.json();
+      const data =
+        await response.json();
 
       // 遍历本次查询到的所有厕所
-      data.elements.forEach(toilet => {
-        /*
+      data.elements.forEach(
+        toilet => {
+          /*
           使用厕所类型和编号组成唯一 ID。
 
           例如：
+
           node-12345
           way-12345
-        */
-        const toiletId =
-          toilet.type + "-" + toilet.id;
+          */
+          const toiletId =
+            toilet.type +
+            "-" +
+            toilet.id;
 
-        // 如果厕所已经显示过，跳过
-        if (knownToilets.has(toiletId)) {
-          return;
+          // 如果厕所已经显示过
+          // 就跳过
+          if (
+            knownToilets.has(toiletId)
+          ) {
+            return;
+          }
+
+          // node 类型直接有 lat 和 lon
+          // way 类型使用 center.lat 和 center.lon
+          const toiletLatitude =
+            toilet.lat ??
+            toilet.center?.lat;
+
+          const toiletLongitude =
+            toilet.lon ??
+            toilet.center?.lon;
+
+          // 如果厕所没有完整坐标
+          // 就跳过
+          if (
+            toiletLatitude == null ||
+            toiletLongitude == null
+          ) {
+            return;
+          }
+
+          // 创建普通大小的厕所 marker
+          const toiletMarker =
+            L.marker(
+              [
+                toiletLatitude,
+                toiletLongitude
+              ],
+              {
+                icon: toiletIcon
+              }
+            ).addTo(map);
+
+          /*
+          保存厕所的信息。
+
+          按钮被点击时，
+          enlargeNearestToilet()
+          会遍历这个数组。
+          */
+          toiletMarkers.push({
+            // 厕所唯一 ID
+            id: toiletId,
+
+            // Leaflet marker
+            marker: toiletMarker,
+
+            // 厕所纬度
+            latitude:
+              toiletLatitude,
+
+            // 厕所经度
+            longitude:
+              toiletLongitude
+          });
+
+          // 记录这个厕所已经显示过
+          knownToilets.add(
+            toiletId
+          );
         }
+      );
+    }
 
-        // node 类型直接有 lat 和 lon
-        // way 类型使用 center.lat 和 center.lon
-        const toiletLatitude =
-          toilet.lat ?? toilet.center?.lat;
-
-        const toiletLongitude =
-          toilet.lon ?? toilet.center?.lon;
-
-        // 如果厕所没有完整坐标，跳过
-        if (
-          toiletLatitude == null ||
-          toiletLongitude == null
-        ) {
-          return;
-        }
-
-        // 在地图上添加厕所 marker
-        L.marker([
-          toiletLatitude,
-          toiletLongitude
-        ]).addTo(map);
-
-        // 记录这个厕所已经显示过
-        knownToilets.add(toiletId);
-      });
-    } catch (error) {
+    catch (error) {
       /*
-        当前类型查询失败后，
-        仍然继续尝试另一种类型。
+      当前类型查询失败后，
+      仍然继续尝试另一种类型。
       */
       console.warn(
         `Failed to load ${type} toilets:`,
@@ -549,18 +861,23 @@ async function loadNearbyToilets() {
     // node 查询结束后等待 800 毫秒
     // 再开始查询 way
     if (type === "node") {
-      await new Promise(resolve => {
-        setTimeout(resolve, 800);
-      });
+      await new Promise(
+        resolve => {
+          setTimeout(
+            resolve,
+            800
+          );
+        }
+      );
     }
   }
 
   /*
-    如果一个厕所都没有显示：
-    10 秒后重新查询。
+  如果一个厕所都没有显示：
+  10 秒后重新查询。
 
-    如果已经显示了厕所：
-    30 秒后重新查询。
+  如果已经显示了厕所：
+  30 秒后重新查询。
   */
   const refreshTime =
     knownToilets.size === 0
@@ -568,8 +885,10 @@ async function loadNearbyToilets() {
       : 30000;
 
   // 本轮请求完成后安排下一轮查询
-  setTimeout(() => {
-    loadNearbyToilets();
-  }, refreshTime);
+  setTimeout(
+    () => {
+      loadNearbyToilets();
+    },
+    refreshTime
+  );
 }
-
