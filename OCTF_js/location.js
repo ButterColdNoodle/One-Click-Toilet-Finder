@@ -192,6 +192,8 @@ function initMap() {
     zoomControl: false
   });
 // CARTO 底图访问 Key
+const cartoKey = "cb1_33jk_1_df8dff39b97074f2c6653f53";
+
 // 加载浅色、无文字底图
 L.tileLayer(
   "https://a.basemaps.cartocdn.com/light_nolabels/" +
