@@ -31,8 +31,19 @@
 
         <!--地图-->
         <div id="map">
-        <button id="wc_Btn" type="button"></button>
+            <!-- 点击后寻找最近厕所并开始导航 -->
+            <button
+                id="wc_Btn"
+                type="button"
+                aria-label="寻找最近厕所并开始导航"
+            >WC</button>
 
+            <!-- 显示剩余距离、转向和导航状态 -->
+            <div
+                id="navigation_status"
+                role="status"
+                aria-live="polite"
+            ></div>
         </div>
             <!--此js来自leaflet: https://leafletjs.com/ 用于显示地图-->
           <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

@@ -1,53 +1,57 @@
 /*
 One-Click Toilet Finder
 
-当前功能：
+功能：
+1. 创建地图并持续定位。
+2. 查询并保存附近厕所。
+3. 根据手机方向旋转用户箭头。
+4. 筛选直线最近的最多五个厕所。
+5. 比较实际步行路线并选择最短者。
+6. 显示待走路线和已走路线。
+7. 显示剩余距离与转向提示。
+8. 偏航后自动重算。
+9. 到达厕所附近时提示。
 
-1. 创建 Leaflet 地图；
-2. 持续监听用户位置；
-3. 显示并移动用户箭头；
-4. 地图中心跟随用户位置；
-5. 查询附近 node 和 way 类型的厕所；
-6. 保存厕所 marker 和坐标；
-7. 获取手机朝向并旋转用户箭头；
-8. 点击 wc_Btn 后：
-   - 计算所有厕所的直线距离；
-   - 取直线距离最近的最多 5 个厕所；
-   - 把这 5 个厕所变成绿色；
-   - 依次请求用户到这 5 个厕所的步行路线；
-   - 比较实际步行距离；
-   - 把步行距离最短的厕所放大 1.5 倍。
+依赖：
+- Leaflet
+- index.html 中已有的 deviceTyp
 */
 
 
 // ========================================
-// 用户位置
+// 1. 基础数据
 // ========================================
 
-// 保存用户最新位置
+// 用户最新位置
 let myLocation = {
   latitude: null,
   longitude: null
 };
 
-
-// ========================================
-// 地图
-// ========================================
-
-// 保存 Leaflet 地图对象
+// 地图与用户 marker
 let map = null;
-
-
-// ========================================
-// 用户 marker
-// ========================================
-
-// 保存用户当前位置 marker
 let userMarker = null;
 
+// 已经显示过的厕所 ID，避免重复添加
+let knownToilets = new Set();
 
-// 用户箭头图标
+// 保存厕所坐标和 marker
+let toiletMarkers = [];
+
+// 避免重复启动查询循环
+let toiletSearchStarted = false;
+
+// 最终选择的厕所
+let selectedToilet = null;
+
+// 避免重复比较路线
+let routeSelectionRunning = false;
+
+
+// ========================================
+// 2. 用户与厕所图标
+// ========================================
+
 const user_icon = L.divIcon({
   className: "user_icon",
 
@@ -56,62 +60,13 @@ const user_icon = L.divIcon({
   `,
 
   iconSize: [22, 30],
-
-  // 让经纬度对应箭头中心
   iconAnchor: [11, 15]
 });
 
+// 普通厕所：蓝色
+const toiletIcon = new L.Icon.Default();
 
-// ========================================
-// 厕所数据
-// ========================================
-
-// 保存已经显示过的厕所 ID
-// 防止相同厕所被重复添加
-let knownToilets = new Set();
-
-
-// 保存所有厕所的数据
-//
-// 每个厕所包含：
-// id
-// marker
-// latitude
-// longitude
-let toiletMarkers = [];
-
-
-// 防止重复启动厕所查询循环
-let toiletSearchStarted = false;
-
-
-// 保存最终选中的厕所
-//
-// 以后开始正式导航时，
-// 可以直接使用这个变量作为导航终点
-let selectedToilet = null;
-
-
-// 标记当前是否正在比较步行路线
-//
-// 防止用户连续点击按钮，
-// 同时启动多组路线请求
-let routeSelectionRunning = false;
-
-
-// ========================================
-// 厕所 marker 图标
-// ========================================
-
-// 普通厕所使用 Leaflet 默认蓝色 marker
-const toiletIcon =
-  new L.Icon.Default();
-
-
-// 绿色 marker 使用的 SVG 图片
-//
-// 只生成一次，普通绿色图标和放大绿色图标
-// 共用同一张 SVG。
+// 候选厕所：绿色
 const greenToiletSvg =
   "data:image/svg+xml;charset=UTF-8," +
   encodeURIComponent(`
@@ -144,96 +99,99 @@ const greenToiletSvg =
     </svg>
   `);
 
+const greenToiletIcon = L.icon({
+  iconUrl: greenToiletSvg,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34]
+});
 
-// 普通大小的绿色厕所 marker
-const greenToiletIcon =
-  L.icon({
-    iconUrl: greenToiletSvg,
-
-    // 与 Leaflet 默认 marker 大小接近
-    iconSize: [25, 41],
-
-    // 让 marker 底部尖端对应厕所坐标
-    iconAnchor: [12, 41],
-
-    popupAnchor: [1, -34]
-  });
-
-
-// 放大 1.5 倍的绿色厕所 marker
-//
-// 默认大小约为：
-// 25 × 41
-//
-// 放大 1.5 倍约为：
-// 38 × 62
-const bigGreenToiletIcon =
-  L.icon({
-    iconUrl: greenToiletSvg,
-
-    iconSize: [38, 62],
-
-    // 底部尖端仍然对应厕所坐标
-    iconAnchor: [19, 62],
-
-    popupAnchor: [1, -52]
-  });
+// 最终厕所：放大约 1.5 倍
+const bigGreenToiletIcon = L.icon({
+  iconUrl: greenToiletSvg,
+  iconSize: [38, 62],
+  iconAnchor: [19, 62],
+  popupAnchor: [1, -52]
+});
 
 
 // ========================================
-// 手机方向
+// 3. 手机方向数据
 // ========================================
 
-// 保存手机当前朝向
-//
-// 0°   = 北
-// 90°  = 东
-// 180° = 南
-// 270° = 西
+// 0° 北、90° 东、180° 南、270° 西
 let userDirection = null;
 
-
-// 保存上一次获得的方向
-//
-// 用于处理：
-// 359° → 0°
-// 0° → 359°
-//
-// 防止箭头突然反方向绕一大圈
+// 上一次方向
 let lastDirection = null;
 
-
-// 保存箭头实际累计旋转角度
-//
-// 这个值可以大于 360°，
-// 也可以小于 0°。
+// 累计旋转角度，允许超过 360°
 let userRotate = 0;
 
-
-// 防止重复添加方向事件监听
+// 避免重复注册方向监听
 let directionListeningStarted = false;
 
 
 // ========================================
-// 初始化地图
+// 4. 导航数据
+// ========================================
+
+// 当前路线及进度
+let navigation = null;
+
+// 待走路线
+let routeLine = null;
+
+// 已走路线
+let passedLine = null;
+
+// 用户位置到路线投影点的虚线
+let connectorLine = null;
+
+// 每次重新选择时增加，避免旧请求覆盖新路线
+let navigationVersion = 0;
+
+// 开始偏航的时间
+let offRouteSince = null;
+
+// 开始满足到达条件的时间
+let arrivalSince = null;
+
+// 上次重算时间
+let lastReroute = -Infinity;
+
+// 是否正在重算
+let rerouteRunning = false;
+
+
+// ========================================
+// 5. 显示导航文字
+// ========================================
+
+function navigationMessage(message) {
+  const element =
+    document.getElementById("navigation_status");
+
+  if(element) {
+    // 使用 textContent，避免把服务返回文字当 HTML
+    element.textContent = message;
+  }
+}
+
+
+// ========================================
+// 6. 初始化地图
 // ========================================
 
 function initMap() {
-  // 地图已经存在时直接返回
-  if (map) {
+  if(map) {
     return map;
   }
 
-  // 创建 Leaflet 地图
-  map = L.map(
-    "map",
-    {
-      // 隐藏默认缩放按钮
-      zoomControl: false
-    }
-  );
+  map = L.map("map", {
+    zoomControl: false
+  });
 
-  // 加载 CARTO 无标签底图
   L.tileLayer(
     "https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
     {
@@ -244,82 +202,39 @@ function initMap() {
     }
   ).addTo(map);
 
-  // 定位成功时执行
-  map.on(
-    "locationfound",
-    onLocationFound
-  );
-
-  // 定位失败时执行
-  map.on(
-    "locationerror",
-    onLocationError
-  );
+  map.on("locationfound", onLocationFound);
+  map.on("locationerror", onLocationError);
 
   return map;
 }
 
 
 // ========================================
-// 显示用户位置
+// 7. 显示用户位置
 // ========================================
 
-function showUserOnMap(
-  latitude,
-  longitude
-) {
-  const userPosition = [
-    latitude,
-    longitude
-  ];
+function showUserOnMap(latitude, longitude) {
+  const position = [latitude, longitude];
 
-  // 用户 marker 已经存在
-  if (userMarker) {
-    // 更新原来的 marker 位置
-    userMarker.setLatLng(
-      userPosition
-    );
-  }
+  if(userMarker) {
+    userMarker.setLatLng(position);
+  } else {
+    userMarker = L.marker(position, {
+      icon: user_icon
+    }).addTo(map);
 
-  // 第一次获得用户位置
-  else {
-    // 创建用户箭头 marker
-    userMarker = L.marker(
-      userPosition,
-      {
-        icon: user_icon
-      }
-    ).addTo(map);
-
-    /*
-    如果方向传感器已经获得方向，
-    marker 创建后立即旋转一次。
-    */
     userArrowRotate();
 
-    // 第一次定位时设置地图缩放
-    map.setView(
-      userPosition,
-      16
-    );
+    map.setView(position, 16);
 
-    // 防止地图出现灰色区域
-    setTimeout(
-      () => {
-        map.invalidateSize();
-      },
-      100
-    );
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
   }
 
-  /*
-  让地图中心跟随用户位置。
-
-  保持当前缩放等级，
-  不播放平移动画。
-  */
+  // 保留你原来的地图跟随逻辑
   map.setView(
-    userPosition,
+    position,
     map.getZoom(),
     {
       animate: false
@@ -329,770 +244,189 @@ function showUserOnMap(
 
 
 // ========================================
-// 开始定位
+// 8. 持续定位
 // ========================================
 
 function locateUser() {
-  // 先创建地图
   initMap();
 
-  // 检查浏览器是否支持定位
-  if (!navigator.geolocation) {
-    alert(
-      "This browser does not support location services."
-    );
-
+  if(!navigator.geolocation) {
+    navigationMessage("当前浏览器不支持定位。");
     return;
   }
 
-  // 持续监听用户位置
   map.locate({
-    // 持续获得位置
     watch: true,
-
-    /*
-    不使用 Leaflet 自带的自动居中。
-
-    地图中心由 showUserOnMap()
-    自己控制。
-    */
     setView: false,
-
-    // 尽量使用高精度定位
     enableHighAccuracy: true,
-
-    // 每次最多等待 10 秒
     timeout: 10000,
-
-    // 不使用以前缓存的位置
     maximumAge: 0
   });
 }
 
-
-// 定位成功
 function onLocationFound(event) {
-  // 保存用户最新纬度
-  myLocation.latitude =
-    event.latlng.lat;
+  myLocation.latitude = event.latlng.lat;
+  myLocation.longitude = event.latlng.lng;
 
-  // 保存用户最新经度
-  myLocation.longitude =
-    event.latlng.lng;
-
-  // 创建或移动用户 marker
   showUserOnMap(
     myLocation.latitude,
     myLocation.longitude
   );
 
-  // 厕所查询循环只启动一次
-  if (!toiletSearchStarted) {
-    toiletSearchStarted = true;
+  /*
+  没有指南针方向时：
+  使用 GPS 提供的移动方向。
 
+  静止或移动过慢时不使用，
+  因为这时 GPS 行进方向可能不可靠。
+  */
+  if(
+    userDirection == null &&
+    Number.isFinite(event.heading) &&
+    event.speed > 0.5
+  ) {
+    userDirection = event.heading;
+    userArrowRotate();
+
+    // 不把 GPS 方向保存为指南针方向
+    userDirection = null;
+  }
+
+  // 每次位置更新时计算导航进度
+  updateNavigation(event);
+
+  if(!toiletSearchStarted) {
+    toiletSearchStarted = true;
     loadNearbyToilets();
   }
 }
 
-
-// 定位失败
 function onLocationError(error) {
-  console.warn(
-    "Location error:",
-    error
+  console.warn("Location error:", error);
+
+  navigationMessage(
+    "定位失败，请检查定位权限；等待定位恢复。"
   );
 
-  alert(
-    "Unable to get your location.\n" +
-    "Please allow location access and try again."
-  );
+  // 没有定位期间不能继续累计偏航或到达时间
+  offRouteSince = null;
+  arrivalSince = null;
 }
 
 
 // ========================================
-// 获得手机方向
+// 9. 获取手机方向
 // ========================================
 
 function userDirectionGet(event) {
-  // iOS
-  if (deviceTyp === "ios") {
-    // 没有获得指南针角度时停止
-    if (
-      event.webkitCompassHeading == null
-    ) {
+  if(deviceTyp === "ios") {
+    if(event.webkitCompassHeading == null) {
       return;
     }
 
-    userDirection =
-      event.webkitCompassHeading;
-  }
-
-  // Android
-  else if (deviceTyp === "android") {
-    // 没有获得 alpha 时停止
-    if (event.alpha == null) {
+    userDirection = event.webkitCompassHeading;
+  } else if(deviceTyp === "android") {
+    // 必须是相对于地球坐标的绝对方向
+    if(event.absolute !== true) {
       return;
     }
 
-    /*
-    Android alpha 与指南针方向相反，
-    因此使用 360 - alpha。
-    */
-    userDirection =
-      (360 - event.alpha) % 360;
-  }
+    if(event.alpha == null) {
+      return;
+    }
 
-  // 桌面或其他设备
-  else {
+    userDirection = (360 - event.alpha) % 360;
+  } else {
     return;
   }
 
-  // 获得新方向后旋转箭头
+  // 根据屏幕旋转角度修正横屏方向
+  const screenAngle =
+    screen.orientation?.angle || 0;
+
+  userDirection =
+    (userDirection + screenAngle + 360) % 360;
+
   userArrowRotate();
 }
 
 
 // ========================================
-// 旋转用户箭头
+// 10. 平滑旋转箭头
 // ========================================
 
 function userArrowRotate() {
-  // 用户 marker 还没有创建
-  if (!userMarker) {
+  if(!userMarker || userDirection == null) {
     return;
   }
 
-  // 还没有获得方向
-  if (userDirection == null) {
+  const markerElement = userMarker.getElement();
+
+  if(!markerElement) {
     return;
   }
 
-  // 获得 marker 最外层 HTML 元素
-  const userMarkerElement =
-    userMarker.getElement();
+  const arrowElement =
+    markerElement.querySelector(".user_arrow");
 
-  if (!userMarkerElement) {
+  if(!arrowElement) {
     return;
   }
 
-  // 找到内部真正的箭头元素
-  const userArrowElement =
-    userMarkerElement.querySelector(
-      ".user_arrow"
-    );
+  if(lastDirection == null) {
+    userRotate = userDirection;
+  } else {
+    let change = userDirection - lastDirection;
 
-  if (!userArrowElement) {
-    return;
-  }
-
-  // 第一次获得方向
-  if (lastDirection == null) {
-    userRotate =
-      userDirection;
-
-    lastDirection =
-      userDirection;
-  }
-
-  else {
-    // 计算本次与上次的角度变化
-    let directionChange =
-      userDirection -
-      lastDirection;
-
-    /*
-    处理顺时针经过北方：
-
-    359° → 0°
-
-    原始变化是 -359°，
-    实际应该是 +1°。
-    */
-    if (directionChange < -180) {
-      directionChange += 360;
+    // 359° → 0° 应该只转 1°
+    if(change < -180) {
+      change += 360;
+    } else if(change > 180) {
+      change -= 360;
     }
 
-    /*
-    处理逆时针经过北方：
-
-    0° → 359°
-
-    原始变化是 +359°，
-    实际应该是 -1°。
-    */
-    else if (
-      directionChange > 180
-    ) {
-      directionChange -= 360;
-    }
-
-    // 加入累计旋转角度
-    userRotate +=
-      directionChange;
-
-    // 保存本次方向
-    lastDirection =
-      userDirection;
+    userRotate += change;
   }
 
-  // 旋转箭头
-  userArrowElement.style.transform =
+  lastDirection = userDirection;
+
+  arrowElement.style.transform =
     `rotate(${userRotate}deg)`;
 }
 
 
 // ========================================
-// 请求一个厕所的步行距离
-// ========================================
-
-/*
-参数：
-
-startPosition
-按钮按下时的用户位置。
-
-toilet
-需要请求路线的厕所对象。
-
-返回：
-
-用户到这个厕所的实际步行距离，
-单位是米。
-*/
-async function getWalkingDistance(
-  startPosition,
-  toilet
-) {
-  /*
-  Valhalla 路线请求数据。
-
-  locations：
-  第一项是起点；
-  第二项是终点。
-
-  costing: pedestrian
-  表示计算步行路线。
-
-  units: kilometers
-  表示返回的路线长度单位是千米。
-
-  directions_type: none
-  表示目前不需要转弯文字说明。
-  */
-  const requestData = {
-    locations: [
-      {
-        lat:
-          startPosition.latitude,
-
-        lon:
-          startPosition.longitude
-      },
-
-      {
-        lat:
-          toilet.latitude,
-
-        lon:
-          toilet.longitude
-      }
-    ],
-
-    costing: "pedestrian",
-
-    units: "kilometers",
-
-    directions_type: "none"
-  };
-
-  /*
-  把 JavaScript 对象转换成 JSON 字符串，
-  再放入请求地址。
-  */
-  const url =
-    "https://valhalla1.openstreetmap.de/route?json=" +
-    encodeURIComponent(
-      JSON.stringify(
-        requestData
-      )
-    );
-
-  // 请求步行路线
-  const response =
-    await fetch(
-      url,
-      {
-        method: "GET",
-
-        /*
-        公开演示服务器建议公开应用
-        提供可以识别应用的客户端 ID。
-        */
-        headers: {
-          "X-Client-Id":
-            "buttercoldnoodle.github.io/One-Click-Toilet-Finder"
-        }
-      }
-    );
-
-  // 请求返回 HTTP 错误
-  if (!response.ok) {
-    throw new Error(
-      "Walking route request failed: " +
-      response.status
-    );
-  }
-
-  // 把返回内容转换为 JavaScript 对象
-  const data =
-    await response.json();
-
-  /*
-  检查返回结果中是否有路线长度。
-
-  正常情况下路线长度位于：
-
-  data.trip.summary.length
-  */
-  if (
-    !data.trip ||
-    !data.trip.summary ||
-    typeof data.trip.summary.length
-      !== "number"
-  ) {
-    throw new Error(
-      "Walking route distance is missing."
-    );
-  }
-
-  /*
-  Valhalla 当前返回单位是千米。
-
-  例如：
-
-  0.42 千米
-
-  乘以 1000 后变成：
-
-  420 米
-  */
-  const walkingDistance =
-    data.trip.summary.length *
-    1000;
-
-  return walkingDistance;
-}
-
-
-// ========================================
-// 找最近五个并比较步行距离
-// ========================================
-
-async function findBestToilet() {
-  // 地图还没有创建
-  if (!map) {
-    console.warn(
-      "The map is not ready yet."
-    );
-
-    return;
-  }
-
-  // 还没有获得用户位置
-  if (
-    myLocation.latitude == null ||
-    myLocation.longitude == null
-  ) {
-    console.warn(
-      "The user's location is not available yet."
-    );
-
-    return;
-  }
-
-  // 还没有加载任何厕所
-  if (toiletMarkers.length === 0) {
-    console.warn(
-      "No toilet markers are available yet."
-    );
-
-    return;
-  }
-
-  // 已经正在比较路线
-  if (routeSelectionRunning) {
-    console.warn(
-      "Walking routes are already being checked."
-    );
-
-    return;
-  }
-
-  // 标记为正在运行
-  routeSelectionRunning = true;
-
-  // 获得按钮
-  const wcBtn =
-    document.getElementById(
-      "wc_Btn"
-    );
-
-  // 请求期间暂时禁用按钮
-  if (wcBtn) {
-    wcBtn.disabled = true;
-  }
-
-  try {
-    /*
-    固定本次比较使用的起点。
-
-    即使五次路线请求期间 GPS 更新，
-    五个厕所仍然从同一个起点比较，
-    保证结果公平。
-    */
-    const startPosition = {
-      latitude:
-        myLocation.latitude,
-
-      longitude:
-        myLocation.longitude
-    };
-
-    // 清除上一次选择结果
-    selectedToilet = null;
-
-    /*
-    每次重新点击按钮时，
-    先把所有厕所恢复成普通蓝色。
-    */
-    toiletMarkers.forEach(
-      toilet => {
-        toilet.marker.setIcon(
-          toiletIcon
-        );
-
-        toilet.marker
-          .setZIndexOffset(0);
-      }
-    );
-
-    /*
-    给所有厕所计算直线距离。
-    */
-    const toiletsWithStraightDistance =
-      toiletMarkers.map(
-        toilet => {
-          const straightDistance =
-            map.distance(
-              [
-                startPosition.latitude,
-                startPosition.longitude
-              ],
-              [
-                toilet.latitude,
-                toilet.longitude
-              ]
-            );
-
-          return {
-            // 保留厕所原来的信息
-            id: toilet.id,
-
-            marker:
-              toilet.marker,
-
-            latitude:
-              toilet.latitude,
-
-            longitude:
-              toilet.longitude,
-
-            // 增加直线距离
-            straightDistance:
-              straightDistance
-          };
-        }
-      );
-
-    /*
-    按直线距离从小到大排序。
-    */
-    toiletsWithStraightDistance.sort(
-      (
-        toiletA,
-        toiletB
-      ) => {
-        return (
-          toiletA.straightDistance -
-          toiletB.straightDistance
-        );
-      }
-    );
-
-    /*
-    取直线距离最近的最多五个厕所。
-
-    如果当前只有三个厕所，
-    就会使用这三个。
-    */
-    const nearestFive =
-      toiletsWithStraightDistance
-        .slice(
-          0,
-          5
-        );
-
-    /*
-    先把这五个厕所变成绿色，
-    表示它们进入了步行路线候选。
-    */
-    nearestFive.forEach(
-      toilet => {
-        toilet.marker.setIcon(
-          greenToiletIcon
-        );
-
-        toilet.marker
-          .setZIndexOffset(1000);
-      }
-    );
-
-    /*
-    保存成功取得步行路线的厕所。
-
-    某一个路线请求失败时，
-    不会让全部流程停止。
-    */
-    const walkingResults = [];
-
-    /*
-    使用 for...of 和 await：
-
-    第一个厕所请求完成
-    →再请求第二个
-    →再请求第三个
-    →直到全部请求完成。
-
-    因此不会同时发出五个请求。
-    */
-    for (
-      const toilet of nearestFive
-    ) {
-      try {
-        console.log(
-          "Checking walking route:",
-          toilet.id
-        );
-
-        // 请求这个厕所的步行距离
-        const walkingDistance =
-          await getWalkingDistance(
-            startPosition,
-            toilet
-          );
-
-        /*
-        将步行距离加入厕所对象，
-        再保存到成功结果数组。
-        */
-        walkingResults.push({
-          id: toilet.id,
-
-          marker:
-            toilet.marker,
-
-          latitude:
-            toilet.latitude,
-
-          longitude:
-            toilet.longitude,
-
-          straightDistance:
-            toilet.straightDistance,
-
-          walkingDistance:
-            walkingDistance
-        });
-
-        console.log(
-          "Walking distance:",
-          toilet.id,
-          Math.round(
-            walkingDistance
-          ),
-          "meters"
-        );
-      }
-
-      catch (error) {
-        /*
-        当前厕所请求失败时，
-        只跳过这个厕所，
-        继续请求剩余厕所。
-        */
-        console.warn(
-          "Failed to get walking route for " +
-          toilet.id +
-          ":",
-          error
-        );
-      }
-    }
-
-    // 五个路线请求全部失败
-    if (
-      walkingResults.length === 0
-    ) {
-      console.warn(
-        "No walking routes could be calculated."
-      );
-
-      return;
-    }
-
-    /*
-    按实际步行距离从小到大排序。
-    */
-    walkingResults.sort(
-      (
-        toiletA,
-        toiletB
-      ) => {
-        return (
-          toiletA.walkingDistance -
-          toiletB.walkingDistance
-        );
-      }
-    );
-
-    /*
-    排序后的第一项，
-    就是实际步行距离最短的厕所。
-    */
-    selectedToilet =
-      walkingResults[0];
-
-    /*
-    把最终选中的厕所放大 1.5 倍。
-
-    其他候选厕所继续保持普通绿色，
-    最终厕所显示为放大的绿色 marker。
-    */
-    selectedToilet.marker.setIcon(
-      bigGreenToiletIcon
-    );
-
-    // 让它显示在其他 marker 上方
-    selectedToilet.marker
-      .setZIndexOffset(2000);
-
-    // 输出最终结果
-    console.log(
-      "Selected toilet:",
-      selectedToilet.id
-    );
-
-    console.log(
-      "Selected walking distance:",
-      Math.round(
-        selectedToilet.walkingDistance
-      ),
-      "meters"
-    );
-
-    /*
-    在控制台显示所有成功路线。
-
-    方便检查：
-    直线距离和步行距离是否合理。
-    */
-    console.table(
-      walkingResults.map(
-        toilet => {
-          return {
-            id:
-              toilet.id,
-
-            straightDistance:
-              Math.round(
-                toilet.straightDistance
-              ),
-
-            walkingDistance:
-              Math.round(
-                toilet.walkingDistance
-              ),
-
-            selected:
-              toilet.id ===
-              selectedToilet.id
-          };
-        }
-      )
-    );
-  }
-
-  finally {
-    // 无论成功还是失败，都恢复运行状态
-    routeSelectionRunning = false;
-
-    // 恢复按钮
-    if (wcBtn) {
-      wcBtn.disabled = false;
-    }
-  }
-}
-
-
-// ========================================
-// 开始监听手机方向
+// 11. 开始监听方向
 // ========================================
 
 async function startDeviceDirection() {
-  // 已经开始监听
-  if (directionListeningStarted) {
+  if(directionListeningStarted) {
     return;
   }
 
-  // 浏览器不支持方向传感器
-  if (!window.DeviceOrientationEvent) {
-    console.warn(
-      "This browser does not support device orientation."
-    );
-
+  if(!window.DeviceOrientationEvent) {
     return;
   }
 
-  // iOS
-  if (deviceTyp === "ios") {
+  if(deviceTyp === "ios") {
     /*
-    部分 iOS Safari 必须由用户点击，
-    才能请求方向权限。
+    iOS 方向权限必须在用户点击时请求。
+    拒绝后仍然可以使用定位和步行路线。
     */
-    if (
-      typeof DeviceOrientationEvent
-        .requestPermission ===
-      "function"
+    if(
+      typeof DeviceOrientationEvent.requestPermission
+      === "function"
     ) {
       try {
         const permission =
-          await DeviceOrientationEvent
-            .requestPermission();
+          await DeviceOrientationEvent.requestPermission();
 
-        if (
-          permission !== "granted"
-        ) {
-          console.warn(
-            "Device orientation permission was denied."
-          );
-
+        if(permission !== "granted") {
           return;
         }
-      }
-
-      catch (error) {
+      } catch(error) {
         console.warn(
-          "Unable to request device orientation permission:",
+          "Direction permission failed:",
           error
         );
 
@@ -1106,12 +440,7 @@ async function startDeviceDirection() {
     );
 
     directionListeningStarted = true;
-  }
-
-  // Android
-  else if (
-    deviceTyp === "android"
-  ) {
+  } else if(deviceTyp === "android") {
     window.addEventListener(
       "deviceorientationabsolute",
       userDirectionGet
@@ -1123,102 +452,58 @@ async function startDeviceDirection() {
 
 
 // ========================================
-// 页面启动
+// 12. 带超时的网络请求
 // ========================================
 
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-    // 开始持续定位用户
-    locateUser();
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
 
-    // 获得寻找厕所按钮
-    const wcBtn =
-      document.getElementById(
-        "wc_Btn"
-      );
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, 12000);
 
-    // 给按钮添加点击事件
-    if (wcBtn) {
-      wcBtn.addEventListener(
-        "click",
-        findBestToilet
-      );
-    }
-
-    else {
-      console.warn(
-        "wc_Btn was not found."
-      );
-    }
-
-    // Android 直接开始监听方向
-    if (
-      deviceTyp === "android"
-    ) {
-      startDeviceDirection();
-    }
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
 
     /*
-    iOS 第一次点击页面时，
-    请求方向权限。
+    在超时范围内读取响应体。
+    避免响应头返回后，下载内容一直卡住。
     */
-    else if (
-      deviceTyp === "ios"
-    ) {
-      document.addEventListener(
-        "click",
-        startDeviceDirection,
-        {
-          once: true
-        }
-      );
-    }
-  }
-);
+    const body = await response.text();
 
+    return {
+      ok: response.ok,
+      status: response.status,
 
-// 页面离开时停止定位
-window.addEventListener(
-  "pagehide",
-  () => {
-    if (map) {
-      map.stopLocate();
-    }
+      json: async () => {
+        return JSON.parse(body);
+      }
+    };
+  } finally {
+    clearTimeout(timer);
   }
-);
+}
 
 
 // ========================================
-// 加载附近厕所
+// 13. 查询附近厕所
 // ========================================
 
 async function loadNearbyToilets() {
-  // 查询半径，单位是米
   const radius = 1500;
 
-  // 每轮查询读取用户最新位置
-  const latitude =
-    myLocation.latitude;
+  const latitude = myLocation.latitude;
+  const longitude = myLocation.longitude;
 
-  const longitude =
-    myLocation.longitude;
-
-  // 还没有用户位置时停止
-  if (
-    latitude == null ||
-    longitude == null
-  ) {
+  if(latitude == null || longitude == null) {
     return;
   }
 
-  // 依次查询 node 和 way
-  for (
-    const type of [
-      "node",
-      "way"
-    ]
-  ) {
+  // 保留原来的 node / way 分开查询
+  for(const type of ["node", "way"]) {
     const query = `
       [out:json][timeout:10];
 
@@ -1233,156 +518,937 @@ async function loadNearbyToilets() {
       encodeURIComponent(query);
 
     try {
-      // 请求厕所数据
-      const response =
-        await fetch(url);
+      const response = await fetchWithTimeout(url);
 
-      // HTTP 请求失败
-      if (!response.ok) {
+      if(!response.ok) {
         throw new Error(
-          "Overpass request failed: " +
-          response.status
+          "Overpass request failed: " + response.status
         );
       }
 
-      // 读取 JSON
-      const data =
-        await response.json();
+      const data = await response.json();
 
-      // 遍历所有厕所
-      data.elements.forEach(
-        toilet => {
-          /*
-          使用类型和 OSM ID
-          组成厕所唯一 ID。
+      for(const toilet of data.elements) {
+        const toiletId =
+          toilet.type + "-" + toilet.id;
 
-          例如：
-
-          node-123456
-          way-123456
-          */
-          const toiletId =
-            toilet.type +
-            "-" +
-            toilet.id;
-
-          // 已经显示过则跳过
-          if (
-            knownToilets.has(
-              toiletId
-            )
-          ) {
-            return;
-          }
-
-          /*
-          node 直接有 lat 和 lon。
-
-          way 使用 center.lat
-          和 center.lon。
-          */
-          const toiletLatitude =
-            toilet.lat ??
-            toilet.center?.lat;
-
-          const toiletLongitude =
-            toilet.lon ??
-            toilet.center?.lon;
-
-          // 坐标不完整时跳过
-          if (
-            toiletLatitude == null ||
-            toiletLongitude == null
-          ) {
-            return;
-          }
-
-          // 创建普通蓝色厕所 marker
-          const toiletMarker =
-            L.marker(
-              [
-                toiletLatitude,
-                toiletLongitude
-              ],
-              {
-                icon:
-                  toiletIcon
-              }
-            ).addTo(map);
-
-          /*
-          保存厕所 marker 和坐标。
-
-          点击按钮后，
-          findBestToilet()
-          会使用这些数据。
-          */
-          toiletMarkers.push({
-            id:
-              toiletId,
-
-            marker:
-              toiletMarker,
-
-            latitude:
-              toiletLatitude,
-
-            longitude:
-              toiletLongitude
-          });
-
-          // 标记为已经显示
-          knownToilets.add(
-            toiletId
-          );
+        if(knownToilets.has(toiletId)) {
+          continue;
         }
-      );
-    }
 
-    catch (error) {
-      /*
-      当前类型请求失败，
-      仍然继续尝试另一种类型。
-      */
+        const toiletLatitude =
+          toilet.lat ?? toilet.center?.lat;
+
+        const toiletLongitude =
+          toilet.lon ?? toilet.center?.lon;
+
+        if(
+          toiletLatitude == null ||
+          toiletLongitude == null
+        ) {
+          continue;
+        }
+
+        const marker = L.marker(
+          [toiletLatitude, toiletLongitude],
+          {
+            icon: toiletIcon
+          }
+        ).addTo(map);
+
+        toiletMarkers.push({
+          id: toiletId,
+          marker,
+          latitude: toiletLatitude,
+          longitude: toiletLongitude
+        });
+
+        knownToilets.add(toiletId);
+      }
+    } catch(error) {
       console.warn(
         `Failed to load ${type} toilets:`,
         error
       );
     }
 
+    // 两个查询之间稍作间隔
+    if(type === "node") {
+      await new Promise(resolve => {
+        setTimeout(resolve, 800);
+      });
+    }
+  }
+
+  // 保留仓库原来的刷新间隔
+  const refreshTime =
+    knownToilets.size === 0 ? 10000 : 30000;
+
+  setTimeout(loadNearbyToilets, refreshTime);
+}
+
+
+// ========================================
+// 14. 解码 Valhalla 路线
+// ========================================
+
+/*
+Valhalla 返回的 shape 是 polyline6。
+
+解码后得到：
+[
+  [纬度, 经度],
+  [纬度, 经度],
+  ...
+]
+
+这个数组可以直接交给 L.polyline()。
+*/
+
+function decodePolyline6(shape) {
+  if(typeof shape !== "string" || !shape.length) {
+    throw new Error("Missing route shape");
+  }
+
+  let index = 0;
+  let latitude = 0;
+  let longitude = 0;
+
+  const points = [];
+
+  // 读取一个经度或纬度的变化值
+  function readNumber() {
+    let value = 0;
+    let shift = 0;
+    let byte;
+
+    do {
+      if(index >= shape.length || shift > 30) {
+        throw new Error("Invalid route shape");
+      }
+
+      byte = shape.charCodeAt(index++) - 63;
+
+      if(byte < 0 || byte > 63) {
+        throw new Error("Invalid route character");
+      }
+
+      value += (byte & 31) * 2 ** shift;
+      shift += 5;
+    } while(byte >= 32);
+
+    return value % 2
+      ? -(value + 1) / 2
+      : value / 2;
+  }
+
+  while(index < shape.length) {
+    latitude += readNumber();
+    longitude += readNumber();
+
+    if(
+      Math.abs(latitude) > 90000000 ||
+      Math.abs(longitude) > 180000000
+    ) {
+      throw new Error("Invalid route coordinates");
+    }
+
+    points.push([
+      latitude / 1e6,
+      longitude / 1e6
+    ]);
+  }
+
+  if(points.length < 2) {
+    throw new Error("Route is too short");
+  }
+
+  return points;
+}
+
+
+// ========================================
+// 15. 请求一个厕所的步行路线
+// ========================================
+
+/*
+保留原函数名 getWalkingDistance。
+
+现在返回的不只是距离，而是：
+{
+  walkingDistance: 步行距离，单位米,
+  points: 路线坐标数组,
+  maneuvers: 转向说明数组
+}
+*/
+
+async function getWalkingDistance(startPosition, toilet) {
+  const requestData = {
+    locations: [
+      {
+        lat: startPosition.latitude,
+        lon: startPosition.longitude
+      },
+      {
+        lat: toilet.latitude,
+        lon: toilet.longitude
+      }
+    ],
+
+    costing: "pedestrian",
+    units: "kilometers",
+
+    // 同时请求转向文字
+    directions_type: "instructions"
+  };
+
+  const url =
+    "https://valhalla1.openstreetmap.de/route?json=" +
+    encodeURIComponent(JSON.stringify(requestData));
+
+  const response = await fetchWithTimeout(url, {
+    method: "GET",
+
+    headers: {
+      "X-Client-Id":
+        "buttercoldnoodle.github.io/One-Click-Toilet-Finder"
+    }
+  });
+
+  if(!response.ok) {
+    throw new Error(
+      "Walking route request failed: " + response.status
+    );
+  }
+
+  const data = await response.json();
+
+  const length = data.trip?.summary?.length;
+
+  if(!Number.isFinite(length) || length < 0) {
+    throw new Error("Walking route distance is missing");
+  }
+
+  const leg = data.trip.legs?.[0];
+  const points = decodePolyline6(leg?.shape);
+
+  return {
+    walkingDistance: length * 1000,
+    points,
+    maneuvers: leg.maneuvers || []
+  };
+}
+
+
+// ========================================
+// 16. 选择最近厕所并开始导航
+// ========================================
+
+async function findBestToilet() {
+  if(!map) {
+    return;
+  }
+
+  if(
+    myLocation.latitude == null ||
+    myLocation.longitude == null
+  ) {
+    navigationMessage("等待定位，请允许位置权限。");
+    return;
+  }
+
+  if(toiletMarkers.length === 0) {
+    navigationMessage(
+      "附近厕所尚未加载，请稍后点击 WC。"
+    );
+
+    return;
+  }
+
+  if(routeSelectionRunning) {
+    return;
+  }
+
+  routeSelectionRunning = true;
+
+  // 清除旧导航，同时让旧重算请求失效
+  stopNavigation();
+
+  navigationMessage("正在比较步行路线…");
+
+  const wcBtn = document.getElementById("wc_Btn");
+
+  if(wcBtn) {
+    wcBtn.disabled = true;
+  }
+
+  try {
     /*
-    node 查询后等待 800 毫秒，
-    再查询 way。
+    所有候选使用同一个起点。
+    避免比较期间位置更新导致比较不公平。
     */
-    if (type === "node") {
-      await new Promise(
-        resolve => {
-          setTimeout(
-            resolve,
-            800
-          );
-        }
+    const startPosition = {
+      latitude: myLocation.latitude,
+      longitude: myLocation.longitude
+    };
+
+    selectedToilet = null;
+
+    // 恢复所有厕所的默认图标
+    for(const toilet of toiletMarkers) {
+      toilet.marker.setIcon(toiletIcon);
+      toilet.marker.setZIndexOffset(0);
+    }
+
+    // 计算直线距离并取最近五个
+    const nearestFive = toiletMarkers
+      .map(toilet => {
+        return {
+          ...toilet,
+
+          straightDistance: map.distance(
+            [
+              startPosition.latitude,
+              startPosition.longitude
+            ],
+            [
+              toilet.latitude,
+              toilet.longitude
+            ]
+          )
+        };
+      })
+      .sort((a, b) => {
+        return a.straightDistance - b.straightDistance;
+      })
+      .slice(0, 5);
+
+    for(const toilet of nearestFive) {
+      toilet.marker.setIcon(greenToiletIcon);
+      toilet.marker.setZIndexOffset(1000);
+    }
+
+    const walkingResults = [];
+
+    // 依次请求，避免同时向服务发送五次请求
+    for(const toilet of nearestFive) {
+      try {
+        const route = await getWalkingDistance(
+          startPosition,
+          toilet
+        );
+
+        walkingResults.push({
+          ...toilet,
+          route,
+          walkingDistance: route.walkingDistance
+        });
+      } catch(error) {
+        // 一个候选失败，不影响其他候选
+        console.warn(
+          "Failed to get route for " + toilet.id,
+          error
+        );
+      }
+    }
+
+    if(walkingResults.length === 0) {
+      navigationMessage(
+        "路线请求失败，请点击 WC 重试。"
       );
+
+      return;
+    }
+
+    walkingResults.sort((a, b) => {
+      return a.walkingDistance - b.walkingDistance;
+    });
+
+    selectedToilet = walkingResults[0];
+
+    selectedToilet.marker.setIcon(
+      bigGreenToiletIcon
+    );
+
+    selectedToilet.marker.setZIndexOffset(2000);
+
+    /*
+    直接使用刚才已经请求到的路线。
+    不再为最终厕所重复请求一次。
+    */
+    beginNavigation(selectedToilet.route);
+  } catch(error) {
+    console.warn("Route selection failed:", error);
+
+    navigationMessage(
+      "导航启动失败，请点击 WC 重试。"
+    );
+  } finally {
+    routeSelectionRunning = false;
+
+    if(wcBtn) {
+      wcBtn.disabled = false;
+    }
+  }
+}
+
+
+// ========================================
+// 17. 清除当前导航
+// ========================================
+
+function stopNavigation() {
+  navigationVersion++;
+
+  for(const layer of [
+    routeLine,
+    passedLine,
+    connectorLine
+  ]) {
+    if(layer) {
+      map.removeLayer(layer);
+    }
+  }
+
+  navigation = null;
+
+  routeLine = null;
+  passedLine = null;
+  connectorLine = null;
+
+  offRouteSince = null;
+  arrivalSince = null;
+
+  rerouteRunning = false;
+  lastReroute = -Infinity;
+}
+
+
+// ========================================
+// 18. 显示新路线
+// ========================================
+
+function beginNavigation(route) {
+  // 重算时移除旧线条
+  for(const layer of [
+    routeLine,
+    passedLine,
+    connectorLine
+  ]) {
+    if(layer) {
+      map.removeLayer(layer);
     }
   }
 
   /*
-  当前没有厕所：
-  10 秒后重新查询。
+  cumulative[i]：
+  从路线起点走到第 i 个路线点的累计距离。
 
-  已经有厕所：
-  30 秒后重新查询。
+  例如：
+  [0, 12, 28, 45, ...]
   */
-  const refreshTime =
-    knownToilets.size === 0
-      ? 10000
-      : 30000;
+  const cumulative = [0];
 
-  // 安排下一轮查询
-  setTimeout(
-    () => {
-      loadNearbyToilets();
-    },
-    refreshTime
+  for(let i = 1; i < route.points.length; i++) {
+    const segmentLength = map.distance(
+      route.points[i - 1],
+      route.points[i]
+    );
+
+    cumulative.push(
+      cumulative[i - 1] + segmentLength
+    );
+  }
+
+  navigation = {
+    ...route,
+    cumulative,
+
+    // 已走距离
+    progress: 0,
+
+    arrived: false,
+
+    // 上一次有效定位的时间
+    lastFix: null
+  };
+
+  // 已走路线：淡蓝
+  passedLine = L.polyline([], {
+    color: "#1677ff",
+    weight: 6,
+    opacity: 0.18,
+    interactive: false
+  }).addTo(map);
+
+  // 待走路线：蓝色
+  routeLine = L.polyline(route.points, {
+    color: "#1677ff",
+    weight: 6,
+    lineCap: "round",
+    interactive: false
+  }).addTo(map);
+
+  // 用户位置到路线投影点：虚线
+  connectorLine = L.polyline([], {
+    color: "#1677ff",
+    weight: 3,
+    dashArray: "4 6",
+    interactive: false
+  }).addTo(map);
+
+  offRouteSince = null;
+  arrivalSince = null;
+
+  navigationMessage(
+    `步行约 ${Math.round(route.walkingDistance)} 米`
   );
 }
+
+
+// ========================================
+// 19. 找用户在线路上的投影点
+// ========================================
+
+/*
+把每两个相邻路线点看作一条线段。
+
+对于每条线段：
+1. 找用户在该线段上的最近点。
+2. 算用户离该点多远。
+3. 算该点对应的沿线进度。
+
+只允许在当前进度附近匹配，
+减少交叉路口跳到后半程的情况。
+*/
+
+function projectToRoute(
+  position,
+  route,
+  maxProgress = Infinity
+) {
+  let best = null;
+
+  // 经度方向随纬度缩短，需要做比例修正
+  const scale =
+    Math.cos(position[0] * Math.PI / 180);
+
+  for(let i = 0; i < route.points.length - 1; i++) {
+    const a = route.points[i];
+    const b = route.points[i + 1];
+
+    const ax =
+      (a[1] - position[1]) * scale;
+
+    const ay =
+      a[0] - position[0];
+
+    const dx =
+      (b[1] - a[1]) * scale;
+
+    const dy =
+      b[0] - a[0];
+
+    const denominator =
+      dx * dx + dy * dy;
+
+    // t 为投影点在线段上的比例，范围 0 到 1
+    const t = denominator
+      ? Math.max(
+          0,
+          Math.min(
+            1,
+            -(ax * dx + ay * dy) / denominator
+          )
+        )
+      : 0;
+
+    const point = [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t
+    ];
+
+    const segmentLength =
+      route.cumulative[i + 1] -
+      route.cumulative[i];
+
+    const progress =
+      route.cumulative[i] + segmentLength * t;
+
+    // 排除过远的旧路段与过远的未来路段
+    if(
+      progress < route.progress - 20 ||
+      progress > maxProgress
+    ) {
+      continue;
+    }
+
+    const distance =
+      map.distance(position, point);
+
+    /*
+    两条路段距离非常接近时，
+    优先保留前面找到的路段。
+    */
+    if(!best || distance < best.distance - 2) {
+      best = {
+        i,
+        point,
+        progress,
+        distance
+      };
+    }
+  }
+
+  return best;
+}
+
+
+// ========================================
+// 20. 每次定位更新导航
+// ========================================
+
+function updateNavigation(event) {
+  if(
+    !navigation ||
+    navigation.arrived ||
+    routeSelectionRunning
+  ) {
+    return;
+  }
+
+  const now = performance.now();
+
+  const position = [
+    myLocation.latitude,
+    myLocation.longitude
+  ];
+
+  const accuracy = event.accuracy;
+
+  /*
+  精度较差时：
+  不推进路线，不判断偏航，也不判断到达。
+  */
+  if(
+    !Number.isFinite(accuracy) ||
+    accuracy > 35
+  ) {
+    offRouteSince = null;
+    arrivalSince = null;
+
+    navigationMessage(
+      "定位精度较低，等待更准确的位置…"
+    );
+
+    return;
+  }
+
+  // 距上次有效定位过去多少秒
+  const gap = navigation.lastFix == null
+    ? 0
+    : (now - navigation.lastFix) / 1000;
+
+  /*
+  定位中断超过 10 秒：
+  重置“持续偏航”和“持续到达”计时。
+  */
+  if(gap > 10) {
+    offRouteSince = null;
+    arrivalSince = null;
+  }
+
+  navigation.lastFix = now;
+
+  // 限制一次定位允许向前匹配的范围
+  const maxAdvance = Math.max(
+    50,
+    Math.min(gap, 30) * 4
+  );
+
+  const matched = projectToRoute(
+    position,
+    navigation,
+    navigation.progress + maxAdvance
+  );
+
+  // ----------------------------------------
+  // 偏航判断
+  // ----------------------------------------
+
+  if(!matched || matched.distance > 25) {
+    arrivalSince = null;
+
+    if(offRouteSince == null) {
+      offRouteSince = now;
+    }
+
+    navigationMessage(
+      "已偏离路线，正在确认位置…"
+    );
+
+    const offRouteLongEnough =
+      now - offRouteSince >= 8000;
+
+    const cooldownFinished =
+      now - lastReroute >= 20000;
+
+    if(offRouteLongEnough && cooldownFinished) {
+      rerouteNavigation();
+    }
+
+    return;
+  }
+
+  offRouteSince = null;
+
+  /*
+  GPS 轻微后退时不减少进度，
+  避免路线反复变深、变浅。
+  */
+  navigation.progress = Math.max(
+    navigation.progress,
+    matched.progress
+  );
+
+  // ----------------------------------------
+  // 找到当前进度所在的线段
+  // ----------------------------------------
+
+  let i = 0;
+
+  while(
+    i < navigation.points.length - 2 &&
+    navigation.cumulative[i + 1] <
+      navigation.progress
+  ) {
+    i++;
+  }
+
+  const segmentLength =
+    navigation.cumulative[i + 1] -
+    navigation.cumulative[i];
+
+  const t = segmentLength
+    ? (
+        navigation.progress -
+        navigation.cumulative[i]
+      ) / segmentLength
+    : 0;
+
+  const a = navigation.points[i];
+  const b = navigation.points[i + 1];
+
+  // 当前进度对应的精确分割点
+  const split = [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t
+  ];
+
+  // 分割点之前：已走路线
+  passedLine.setLatLngs([
+    ...navigation.points.slice(0, i + 1),
+    split
+  ]);
+
+  // 分割点之后：待走路线
+  routeLine.setLatLngs([
+    split,
+    ...navigation.points.slice(i + 1)
+  ]);
+
+  /*
+  用户箭头始终位于真实 GPS 位置。
+
+  虚线把 GPS 位置连接到路线分割点，
+  不强行把用户 marker 吸附到道路上。
+  */
+  connectorLine.setLatLngs([
+    position,
+    split
+  ]);
+
+  // ----------------------------------------
+  // 剩余距离
+  // ----------------------------------------
+
+  const totalLength =
+    navigation.cumulative[
+      navigation.cumulative.length - 1
+    ];
+
+  const remaining =
+    totalLength - navigation.progress;
+
+  const destinationDistance = map.distance(
+    position,
+    [
+      selectedToilet.latitude,
+      selectedToilet.longitude
+    ]
+  );
+
+  // ----------------------------------------
+  // 到达判断
+  // ----------------------------------------
+
+  if(
+    remaining <= 20 &&
+    destinationDistance <= 25 &&
+    accuracy <= 20
+  ) {
+    if(arrivalSince == null) {
+      arrivalSince = now;
+    }
+
+    if(now - arrivalSince >= 5000) {
+      navigation.arrived = true;
+
+      connectorLine.setLatLngs([]);
+
+      navigationMessage(
+        "已到达厕所附近，请确认入口。" +
+        "再次点击 WC 可重新寻找。"
+      );
+
+      return;
+    }
+  } else {
+    arrivalSince = null;
+  }
+
+  // ----------------------------------------
+  // 下一条转向提示
+  // ----------------------------------------
+
+  const next = navigation.maneuvers.find(
+    maneuver => {
+      const maneuverPosition =
+        navigation.cumulative[
+          maneuver.begin_shape_index
+        ];
+
+      return maneuverPosition >
+        navigation.progress + 5;
+    }
+  );
+
+  let instruction = "";
+
+  if(next) {
+    const distanceToTurn =
+      navigation.cumulative[
+        next.begin_shape_index
+      ] - navigation.progress;
+
+    instruction =
+      ` · ${Math.round(distanceToTurn)} 米后：` +
+      next.instruction;
+  }
+
+  navigationMessage(
+    `剩余约 ${Math.round(remaining)} 米` +
+    instruction
+  );
+}
+
+
+// ========================================
+// 21. 偏航后重新规划
+// ========================================
+
+async function rerouteNavigation() {
+  if(
+    rerouteRunning ||
+    routeSelectionRunning ||
+    !selectedToilet
+  ) {
+    return;
+  }
+
+  rerouteRunning = true;
+  lastReroute = performance.now();
+
+  const version = navigationVersion;
+  const destination = selectedToilet;
+
+  navigationMessage("正在重新规划步行路线…");
+
+  try {
+    const route = await getWalkingDistance(
+      {
+        latitude: myLocation.latitude,
+        longitude: myLocation.longitude
+      },
+      destination
+    );
+
+    /*
+    请求期间如果用户重新选择了厕所，
+    当前请求就已经过期，不能覆盖新路线。
+    */
+    if(version !== navigationVersion) {
+      return;
+    }
+
+    beginNavigation(route);
+  } catch(error) {
+    if(version === navigationVersion) {
+      navigationMessage(
+        "重算失败，保留原路线，稍后重试。"
+      );
+    }
+
+    console.warn("Reroute failed:", error);
+  } finally {
+    if(version === navigationVersion) {
+      rerouteRunning = false;
+    }
+  }
+}
+
+
+// ========================================
+// 22. 页面启动与恢复
+// ========================================
+
+document.addEventListener("DOMContentLoaded", () => {
+  locateUser();
+
+  const wcBtn = document.getElementById("wc_Btn");
+
+  if(wcBtn) {
+    wcBtn.addEventListener("click", () => {
+      // iOS 可通过这次点击请求或重试方向权限
+      startDeviceDirection();
+
+      findBestToilet();
+    });
+  }
+
+  if(deviceTyp === "android") {
+    startDeviceDirection();
+  } else if(deviceTyp === "ios") {
+    document.addEventListener(
+      "click",
+      startDeviceDirection,
+      {
+        once: true
+      }
+    );
+  }
+});
+
+// 离开页面时停止定位
+window.addEventListener("pagehide", () => {
+  if(map) {
+    map.stopLocate();
+  }
+});
+
+// 从浏览器后退缓存恢复时重新定位
+window.addEventListener("pageshow", event => {
+  if(event.persisted) {
+    locateUser();
+  }
+});
