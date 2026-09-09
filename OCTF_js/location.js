@@ -191,16 +191,21 @@ function initMap() {
   map = L.map("map", {
     zoomControl: false
   });
+// CARTO 底图访问 Key
+// 加载浅色、无文字底图
+L.tileLayer(
+  "https://a.basemaps.cartocdn.com/light_nolabels/" +
+  "{z}/{x}/{y}{r}.png?key=" +
+  encodeURIComponent(cartoKey),
+  {
+    maxZoom: 19,
 
-  L.tileLayer(
-    "https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-    {
-      maxZoom: 19,
-
-      attribution:
-        "&copy; OpenStreetMap contributors, &copy; CARTO"
-    }
-  ).addTo(map);
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">' +
+      'OpenStreetMap</a> contributors, ' +
+      '&copy; <a href="https://carto.com/attributions">CARTO</a>'
+  }
+).addTo(map);
 
   map.on("locationfound", onLocationFound);
   map.on("locationerror", onLocationError);
