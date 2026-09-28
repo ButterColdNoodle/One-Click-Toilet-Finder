@@ -577,8 +577,18 @@ async function loadNearbyToilets() {
         `Failed to load ${type} toilets:`,
         error
       );
-    }
 
+      // 没有厕所标记时，在页面显示失败原因
+      if(toiletMarkers.length === 0) {
+        const reason = error.name === "AbortError"
+          ? "请求超过12秒，已超时"
+          : error.message;
+
+        navigationMessage(
+          `厕所数据加载失败：${reason}。稍后自动重试。`
+        );
+      }
+    }
     // 两个查询之间稍作间隔
     if(type === "node") {
       await new Promise(resolve => {
