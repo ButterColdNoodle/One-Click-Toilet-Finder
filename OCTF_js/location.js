@@ -16,7 +16,13 @@ WC 按钮：
 → 保存新目的地
 → 放大新目的地
 → 取得路线
-→ 绘制路线并初始化导航进度。
+→ 绘制路线并初始化导航进度
+→ 显示时间和距离，安排下一次更新。
+
+定时更新：
+根据最新位置重新请求当前目的地的路线
+→ 只更新时间和距离
+→ 根据新时间安排下一次更新。
 
 依赖：
 - Leaflet
@@ -55,6 +61,12 @@ let routeLine = null;
 
 // 当前路线数据和导航进度
 let navigation = null;
+
+// 保存下一次更新时间和距离的定时任务
+let remainingTimer = null;
+
+// 区分每次导航，避免旧目的地的结果覆盖新目的地
+let remainingVersion = 0;
 
 
 // ========================================
@@ -551,6 +563,7 @@ function decodePolyline6(shape) {
 
 返回：
 - 步行距离 walkingDistance，单位米
+- 预计时间 walkingTime，单位秒
 - 路线坐标 points
 */
 
@@ -593,6 +606,10 @@ async function getWalkingDistance(startPosition, toilet) {
 
   return {
     walkingDistance: length * 1000,
+
+    // 预计步行时间，单位为秒
+    walkingTime: data.trip.summary.time,
+
     points
   };
 }
@@ -703,6 +720,19 @@ route：已有路线，没有传入时默认为 null。
 */
 
 async function navigateToToilet(toilet, route = null) {
+  // 取消上一个目的地的定时任务
+  clearTimeout(remainingTimer);
+  remainingTimer = null;
+
+  // 每次导航使用新的编号
+  remainingVersion++;
+
+  const version = remainingVersion;
+
+  // 清除上一个目的地的时间和距离
+  document.getElementById("remaining_time").textContent = "";
+  document.getElementById("remaining_distance").textContent = "";
+
   // 恢复上一个目的地的 marker
   if(selectedToilet) {
     selectedToilet.marker.setIcon(toiletIcon);
@@ -725,11 +755,8 @@ async function navigateToToilet(toilet, route = null) {
   selectedToilet.marker.setZIndexOffset(2000);
 
   /*
-  如果没有传入路线：
-  → 使用当前位置和厕所坐标向 Valhalla 请求。
-
-  如果已有路线：
-  → 直接使用传入的路线。
+  WC 按钮已经取得路线时，直接使用。
+  点击 marker 没有传入路线时，再请求路线。
   */
   if(route == null) {
     route = await getWalkingDistance(
@@ -741,8 +768,26 @@ async function navigateToToilet(toilet, route = null) {
     );
   }
 
+  /*
+  等待期间如果已经切换目的地，
+  就不再使用这次返回的旧结果。
+  */
+  if(version !== remainingVersion) {
+    return;
+  }
+
   // 绘制路线并初始化导航进度
   beginNavigation(route);
+
+  // 开始导航时立即显示时间和距离
+  showRemaining(route);
+
+  // 根据剩余时间安排下一次更新
+  scheduleRemainingUpdate(
+    route.walkingTime,
+    toilet,
+    version
+  );
 }
 
 
@@ -768,7 +813,108 @@ function beginNavigation(route) {
 
 
 // ========================================
-// 16. 页面启动与恢复
+// 16. 显示剩余时间和距离
+// ========================================
+
+function showRemaining(route) {
+  const timeElement =
+    document.getElementById("remaining_time");
+
+  const distanceElement =
+    document.getElementById("remaining_distance");
+
+  // 不足一分钟显示 <1 min
+  if(route.walkingTime < 60) {
+    timeElement.textContent = "<1 min";
+  } else {
+    // 秒换算成分钟，再向上取整
+    const minutes = Math.ceil(route.walkingTime / 60);
+
+    timeElement.textContent = `~${minutes} min`;
+  }
+
+  // 距离四舍五入到整数米
+  const meters = Math.round(route.walkingDistance);
+
+  distanceElement.textContent = `${meters} m`;
+}
+
+
+// ========================================
+// 17. 根据剩余时间安排下一次更新
+// ========================================
+
+function scheduleRemainingUpdate(seconds, toilet, version) {
+  let delay;
+
+  /*
+  使用未取整的秒数判断：
+
+  大于 180 秒
+  → 60 秒后更新。
+
+  大于 120 秒、不超过 180 秒
+  → 30 秒后更新。
+
+  不超过 120 秒
+  → 20 秒后更新。
+  */
+  if(seconds > 180) {
+    delay = 60000;
+  } else if(seconds > 120) {
+    delay = 30000;
+  } else {
+    delay = 20000;
+  }
+
+  remainingTimer = setTimeout(() => {
+    updateRemaining(toilet, version);
+  }, delay);
+}
+
+
+// ========================================
+// 18. 根据最新位置更新时间和距离
+// ========================================
+
+async function updateRemaining(toilet, version) {
+  // 已经切换目的地时，不再执行旧的更新任务
+  if(version !== remainingVersion) {
+    return;
+  }
+
+  /*
+  到更新时刻再读取当前位置。
+  → 请求当前位置到这个厕所的步行路线。
+  → 取得最新预计时间和距离。
+  */
+  const route = await getWalkingDistance(
+    {
+      latitude: myLocation.latitude,
+      longitude: myLocation.longitude
+    },
+    toilet
+  );
+
+  // 请求期间如果切换了目的地，忽略旧结果
+  if(version !== remainingVersion) {
+    return;
+  }
+
+  // 只更新两侧文字，不替换地图上的路线
+  showRemaining(route);
+
+  // 根据新时间重新选择更新间隔
+  scheduleRemainingUpdate(
+    route.walkingTime,
+    toilet,
+    version
+  );
+}
+
+
+// ========================================
+// 19. 页面启动与恢复
 // ========================================
 
 document.addEventListener("DOMContentLoaded", () => {

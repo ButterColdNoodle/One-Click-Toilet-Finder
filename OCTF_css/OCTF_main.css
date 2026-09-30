@@ -117,3 +117,20 @@ h1 {
 #navigation_status:empty {
   display: none;
 }
+
+#remaining_time,
+#remaining_distance {
+  position: fixed;
+  bottom: 62px;
+  transform: translateY(50%);
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+#remaining_time {
+  right: calc(50% + 42px);
+}
+
+#remaining_distance {
+  left: calc(50% + 42px);
+}
