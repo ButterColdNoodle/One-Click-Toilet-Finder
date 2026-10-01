@@ -97,3 +97,40 @@ h1 {
   z-index: 1000;
   cursor: pointer;
 }
+
+#navigation_status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 1000;
+
+  padding: 10px;
+  border-radius: 8px;
+  background: white;
+  color: #222;
+
+  font-size: 14px;
+  pointer-events: none;
+}
+
+#navigation_status:empty {
+  display: none;
+}
+
+#remaining_time,
+#remaining_distance {
+  position: fixed;
+  bottom: 62px;
+  transform: translateY(50%);
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+#remaining_time {
+  right: calc(50% + 42px);
+}
+
+#remaining_distance {
+  left: calc(50% + 42px);
+}
