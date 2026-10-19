@@ -776,7 +776,7 @@ async function navigateToToilet(
   clearTimeout(remainingTimer);
   remainingTimer = null;
 
-  const version = ++remainingVersion;
+  const version = locNavVersion;
 
   // 清除上一个目的地的时间和距离
   document.getElementById("remaining_time").textContent = "";
@@ -818,14 +818,9 @@ async function navigateToToilet(
       );
     }
 
-    // 等待期间发生新的选择时，不使用旧结果
-    if(
-      locNavVersion !== navVersion ||
-      version !== remainingVersion
-    ) {
+    if(version !== navVersion) {
       return;
     }
-
     // 绘制路线并初始化导航进度
     beginNavigation(route);
 
@@ -934,7 +929,7 @@ async function updateRemaining(
   previousSeconds
 ) {
   // 已经切换目的地时，不执行旧的更新任务
-  if(version !== remainingVersion) {
+  if(version !== navVersion) {
     return;
   }
 
@@ -956,7 +951,7 @@ async function updateRemaining(
     );
 
     // 请求期间切换了目的地时，忽略旧结果
-    if(version !== remainingVersion) {
+    if(version !== navVersion) {
       return;
     }
 
@@ -968,7 +963,7 @@ async function updateRemaining(
     // 更新失败时保留上一次显示，不显示错误提示
   } finally {
     // 当前目的地仍然有效时，继续安排下一次更新
-    if(version === remainingVersion) {
+    if(version === navVersion) {
       scheduleRemainingUpdate(
         seconds,
         toilet,
