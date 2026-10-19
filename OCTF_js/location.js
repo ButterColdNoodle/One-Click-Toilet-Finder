@@ -67,11 +67,8 @@ let navigation = null;
 // 保存下一次更新时间和距离的任务
 let remainingTimer = null;
 
-// 区分不同目的地的时间更新任务
-let remainingVersion = 0;
-
-// 区分每次选择，避免旧的自动筛选覆盖新的选择
-let selectionVersion = 0;
+// 防止路线请求的版本号
+let navVersion = 0;
 
 
 // ========================================
@@ -648,7 +645,7 @@ async function findBestToilet() {
     return;
   }
 
-  const selection = ++selectionVersion;
+  const locNavVersion = ++navVersion;
 
   // 比较期间，五个厕所使用同一个起点
   const startPosition = {
@@ -694,7 +691,7 @@ async function findBestToilet() {
   // 依次请求五个厕所的步行路线
   for(const toilet of nearestFive) {
     // 用户已经进行了新的选择时，停止旧比较
-    if(selection !== selectionVersion) {
+    if(locNavVersion !== navVersion) {
       return;
     }
 
@@ -705,7 +702,7 @@ async function findBestToilet() {
       );
 
       // 等待请求期间发生新的选择时，忽略旧结果
-      if(selection !== selectionVersion) {
+      if(locNavVersion !== navVersion) {
         return;
       }
 
@@ -719,7 +716,7 @@ async function findBestToilet() {
     }
   }
 
-  if(selection !== selectionVersion) {
+  if(locNavVersion !== navVersion) {
     return;
   }
 
@@ -743,7 +740,7 @@ async function findBestToilet() {
   await navigateToToilet(
     bestToilet,
     bestToilet.route,
-    selection
+    locNavVersion
   );
 }
 
@@ -757,21 +754,21 @@ WC 按钮和 marker 点击共用这个函数。
 
 toilet：接收到的厕所。
 route：已有路线，没有传入时默认为 null。
-selection：WC 筛选时使用的选择编号。
+locNavVersion：导航版本号，用于防止旧的导航结果覆盖新的导航结果。
 */
 
 async function navigateToToilet(
   toilet,
   route = null,
-  selection = null
+  locNavVersion = null
 ) {
   // 点击 marker 时，建立新的选择编号
-  if(selection == null) {
-    selection = ++selectionVersion;
+  if(locNavVersion == null) {
+    locNavVersion = ++navVersion;
   }
 
   // 已经过时的自动筛选结果不再使用
-  if(selection !== selectionVersion) {
+  if(locNavVersion !== navVersion) {
     return;
   }
 
@@ -823,7 +820,7 @@ async function navigateToToilet(
 
     // 等待期间发生新的选择时，不使用旧结果
     if(
-      selection !== selectionVersion ||
+      locNavVersion !== navVersion ||
       version !== remainingVersion
     ) {
       return;
