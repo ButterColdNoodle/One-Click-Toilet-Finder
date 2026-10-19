@@ -831,7 +831,7 @@ async function navigateToToilet(
     scheduleRemainingUpdate(
       route.walkingTime,
       toilet,
-      version
+      locNavVersion
     );
   } catch(error) {
     // 请求失败时不显示提示，不绘制失败的路线
