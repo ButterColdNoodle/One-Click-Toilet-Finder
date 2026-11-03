@@ -146,6 +146,7 @@ function initMap() {
   map = L.map("map", {
     zoomControl: false
   });
+  map.attributionControl.setPrefix(false);
 
   // CARTO 底图访问 Key
   const cartoKey = "cb1_33jk_1_df8dff39b97074f2c6653f53";

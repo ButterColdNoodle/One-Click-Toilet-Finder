@@ -8,6 +8,7 @@
         <meta name="theme-color" content="#0a6aaa75"/>
         <title>One-Click Toilet Finder</title>
         <link rel="stylesheet" href="OCTF_css/OCTF_main.css"/>
+        <link rel="stylesheet" href="OCTF_css/load.css"/>
         <link rel="manifest" href="manifest.json"/>
         <link rel="apple-touch-icon" href="OCTF_images/Icon_192.png"/>
         <!--此css来自leaflet: https://leafletjs.com/ 用于显示地图-->
@@ -15,10 +16,11 @@
     </head>
 
     <body>
-        
+        <!--加载界面-->
+        <div id="load">load</div>
 
         
-        <h1>One-Click Toilet Finder 0.2.65</h1>
+        <h1>One-Click Toilet Finder 0.4.0</h1>
         <button id="install_Btn" style="display: none;">Install</button>
         <div id="ios_prompt" style="display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; z-index: 9999; width: 80%; border: 1px solid #eee;">
             <p style="margin: 0 0 10px 0; font-weight: bold; font-size: 16px;">Want to install this APP?</p>
@@ -26,7 +28,7 @@
                 Please click on the <b>Share Button</b>. <br>
                 Scroll down and tap <b>Add to Home Screen</b>
             </p>
-            <button id="close_ios_prompt" style="margin-top: 15px; padding: 8px 20px; border: none; background: #007bff; color: white; border-radius: 5px; font-size: 14px;">我知道了</button>
+            <button id="close_ios_prompt" style="margin-top: 15px; padding: 8px 20px; border: none; background: #007bff; color: white; border-radius: 5px; font-size: 14px;">OK</button>
         </div>
         
         <!--地图-->
@@ -35,7 +37,6 @@
             <button
                 id="wc_Btn"
                 type="button"
-                aria-label="寻找最近厕所并开始导航"
             >WC</button>
 
             <!-- 显示剩余步行时间 -->
@@ -47,7 +48,6 @@
             <div
                 id="navigation_status"
                 role="status"
-                aria-live="polite"
             ></div>
         </div>
             <!--此js来自leaflet: https://leafletjs.com/ 用于显示地图-->
@@ -164,6 +164,7 @@
         </script>
         <script src="OCTF_js/register.js"></script>
         <script src="OCTF_js/location.js"></script>
+
 
         
     </body>
