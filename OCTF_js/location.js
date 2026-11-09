@@ -1026,4 +1026,29 @@ window.addEventListener("pageshow", event => {
 // 20. 加载页面
 // ========================================
 const point2 = document.getElementById("point2");
-point2.style.visibility = "hidden";
+const loadTimer = setInterval(() => {
+
+  // 每隔 1 秒执行一次这里的代码
+  point1.style.visibility = "hidden";
+  point2.style.visibility = "hidden";
+  point3.style.visibility = "hidden";
+  setTimeout(() => {
+    // 本轮开始后，再等 1 秒执行这里
+    point1.style.visibility = "visible";
+    point2.style.visibility = "hidden";
+    point3.style.visibility = "hidden";
+  }, 1000);
+  setTimeout(() => {
+    // 本轮开始后，再等 1 秒执行这里
+    point1.style.visibility = "visible";
+    point2.style.visibility = "visible";
+    point3.style.visibility = "hidden";
+  }, 2000);
+  setTimeout(() => {
+    // 本轮开始后，再等 1 秒执行这里
+    point1.style.visibility = "visible";
+    point2.style.visibility = "visible";
+    point3.style.visibility = "visible";
+  }, 3000);
+}, 4000);
+
