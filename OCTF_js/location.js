@@ -1019,3 +1019,11 @@ window.addEventListener("pageshow", event => {
     locateUser();
   }
 });
+
+
+
+// ========================================
+// 20. 加载页面
+// ========================================
+const point2 = document.getElementById("point2");
+point2.style.visibility = "hidden";
