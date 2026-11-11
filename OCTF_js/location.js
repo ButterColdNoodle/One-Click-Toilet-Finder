@@ -461,6 +461,8 @@ async function loadNearbyToilets() {
         };
 
         toiletMarkers.push(toiletData);
+        document.getElementById("found_toilet_num").textContent =
+          "found: " + toiletMarkers.length;
 
         /*
         点击 marker 后，
@@ -1035,7 +1037,7 @@ const loadTimer = setInterval(() => {
 
   if (toiletMarkers.length > 0) {
     clearInterval(loadTimer);
-    load.style.visibility = "none";
+    load.style.display = "none";
   }
 
 
