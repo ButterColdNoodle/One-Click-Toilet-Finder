@@ -134,3 +134,17 @@ h1 {
 #remaining_distance {
   left: calc(50% + 42px);
 }
+
+#found_toilet_num {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 99999;
+
+  padding: 10px;
+  border-radius: 8px;
+  background: white;
+  color: #222;
+
+  font-size: 14px;
+}

@@ -3,7 +3,7 @@
     background-color: #eceeee;
     inset: 0;
     /*需要这个加载界面保证覆盖住所有其他*/
-    z-index: 9999999;
+    z-index: 9999;
 
     font-size: 50px;
     font-weight: bold;

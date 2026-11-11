@@ -1025,8 +1025,20 @@ window.addEventListener("pageshow", event => {
 // ========================================
 // 20. 加载页面
 // ========================================
+
+const point1 = document.getElementById("point1");
 const point2 = document.getElementById("point2");
+const point3 = document.getElementById("point3");
+const load = document.getElementById("load");
+
 const loadTimer = setInterval(() => {
+
+  if (toiletMarkers.length > 0) {
+    clearInterval(loadTimer);
+    load.style.visibility = "none";
+  }
+
+
 
   // 每隔 1 秒执行一次这里的代码
   point1.style.visibility = "hidden";
@@ -1051,4 +1063,7 @@ const loadTimer = setInterval(() => {
     point3.style.visibility = "visible";
   }, 3000);
 }, 4000);
+
+
+
 
